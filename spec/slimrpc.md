@@ -2,7 +2,7 @@
 
 This document specifies the SLIMRPC custom protocol binding for the Agent2Agent (A2A) protocol.
 
-SLIMRPC is an RPC protocol built on top of [SLIM](https://github.com/agntcy/slim) (Secure Low-Latency Interactive Messaging), an open-source network developed by [Agntcy](https://github.com/agntcy). SLIM provides a pub/sub messaging fabric with built-in identity management, enabling agents to communicate using structured names rather than traditional URLs and ports.
+SLIMRPC is an RPC protocol built on top of [SLIM](https://github.com/agntcy/slim) (Secure Low-Latency Interactive Messaging), an open-source communication framework developed by [Agntcy](https://github.com/agntcy). SLIM provides a pub/sub messaging fabric with built-in session and identity management, enabling agents to securely communicate using structured names rather than traditional URLs and ports.
 
 ## 1. Protocol Requirements
 
@@ -23,18 +23,18 @@ SLIMRPC is an RPC protocol built on top of [SLIM](https://github.com/agntcy/slim
 SLIM uses a three-component hierarchical naming scheme instead of URL-based addressing. Every participant in the SLIM network is identified by a **Name** of the form:
 
 ```
-<namespace>/<group>/<name>
+<domain>/<namespace>/<service>
 ```
 
 **Examples:**
 
-| SLIM Name                    | Description                              |
-| :--------------------------- | :--------------------------------------- |
-| `agntcy/demo/echo_agent`     | An echo agent in the `agntcy/demo` group |
-| `agntcy/demo/client`         | A client in the `agntcy/demo` group      |
-| `myorg/production/scheduler` | A scheduler agent in production          |
+| SLIM Name                       | Description                                                    |
+| :------------------------------ | :------------------------------------------------------------- |
+| `mydomain/demo/echo_agent`      | An echo agent in the `myorg` domain and `demo` namespace       |
+| `mydomain/demo/client`          | A client agent in the `myorg` domain and `demo` namespace      |
+| `mydomain/production/scheduler` | A scheduler agent in production                                |
 
-The SLIM Name serves as the service endpoint address in the Agent Card. Clients resolve the agent's Name from the `url` field of the Agent Card's `supportedInterfaces` entry where `protocolBinding` is `"https://a2a-protocol.org/bindings/experimental-slimrpc"`.
+The SLIM Name serves as the service endpoint address in the Agent Card. Clients resolve the agent's Name from the `url` field of the Agent Card's `supportedInterfaces` entry where `protocolBinding` is `"https://a2a-protocol.org/bindings/experimental-slimrpc"` and where the `url` uses the `domain/namespace/service` naming format.
 
 ### 2.2. SLIM Node Connection
 
@@ -51,7 +51,7 @@ Before exchanging A2A messages, both clients and servers **MUST** connect to a S
 
 ### 2.3. Channels
 
-A **Channel** is a directional communication handle from a local App to a remote SLIM Name. Clients create a Channel targeting the agent's SLIM Name to issue RPC calls. The channel handles serialization, framing, and delivery of Protocol Buffer messages over the SLIM network.
+A **Channel** is a directional communication handle from a local App to a remote SLIM Name. Clients create a Channel targeting the agent's SLIM Name to issue RPC calls. The channel handles authentication, serialization, framing, and delivery of Protocol Buffer messages over the SLIM network.
 
 ## 3. Service Parameter Transmission
 
@@ -60,8 +60,8 @@ A2A service parameters defined in [Section 3.2.6 of the specification](https://a
 **Service Parameter Requirements:**
 
 - Service parameters **MUST** be passed as a flat string key-value metadata map alongside each RPC call
-- Service parameter keys are treated as **case-sensitive** strings in SLIMRPC metadata (unlike HTTP headers)
-- Implementations **SHOULD** normalize keys to lowercase for interoperability with HTTP-based bindings
+- Service parameter keys are treated as **case-insensitive** strings in SLIMRPC metadata, consistent with the A2A specification
+- Service parameter values are **case-sensitive**
 - Multiple values for the same service parameter (e.g., `A2A-Extensions`) **SHOULD** be comma-separated in a single metadata entry
 
 **Value Constraints:**
@@ -84,7 +84,7 @@ On the server side, metadata is extracted from the request context object provid
 
 ## 4. Service Definition
 
-The SLIMRPC binding exposes the `A2AService` defined in `specification/a2a.proto` for the version of A2A being implemented. Client stubs and server handler scaffolding are generated from this proto definition using the SLIMRPC code generator plugin.
+The SLIMRPC binding exposes the `A2AService` defined in `specification/a2a.proto` for the version of A2A being implemented. Client stubs and server handler scaffolding are generated from this proto definition using the SLIMRPC code generator plugin for `protoc`.
 
 The SLIMRPC binding uses the **same Protocol Buffer message types** as the gRPC binding. Method names, request types, and response types are determined entirely by the proto definition for the A2A version being targeted — no translation or renaming is applied.
 
@@ -210,11 +210,11 @@ All A2A-specific errors defined in [Section 3.3.2 of the specification](https://
 | :---------------------------------- | :------------------- | :------------------------------------------ |
 | `JSONParseError`                    | `INTERNAL`           | Internal serialization failure              |
 | `InvalidRequestError`               | `INVALID_ARGUMENT`   | Malformed or invalid request                |
-| `MethodNotFoundError`               | `NOT_FOUND`          | Requested method does not exist             |
+| `MethodNotFoundError`               | `UNIMPLEMENTED`      | Requested method does not exist             |
 | `InvalidParamsError`                | `INVALID_ARGUMENT`   | Method parameters are invalid               |
 | `InternalError`                     | `INTERNAL`           | Server-side internal error                  |
 | `TaskNotFoundError`                 | `NOT_FOUND`          | Task ID does not exist or is not accessible |
-| `TaskNotCancelableError`            | `UNIMPLEMENTED`      | Task is in a non-cancelable state           |
+| `TaskNotCancelableError`            | `FAILED_PRECONDITION` | Task is in a non-cancelable state          |
 | `PushNotificationNotSupportedError` | `UNIMPLEMENTED`      | Agent does not support push notifications   |
 | `UnsupportedOperationError`         | `UNIMPLEMENTED`      | Operation not supported by the agent        |
 | `ContentTypeNotSupportedError`      | `UNIMPLEMENTED`      | Content type not accepted by the agent      |
@@ -262,11 +262,11 @@ If a streaming connection is interrupted, clients **SHOULD** use the `SubscribeT
 
 ### 7.5. Capability Declaration
 
-Agents that support streaming **MUST** declare `capabilities.streaming = true` in their Agent Card. The `SendStreamingMessage` and `SubscribeToTask` methods **SHOULD** return `UnsupportedOperationError` if streaming is not enabled.
+Agents that support streaming **MUST** declare `capabilities.streaming = true` in their Agent Card. The `SendStreamingMessage` and `SubscribeToTask` methods **MUST** return `UnsupportedOperationError` if streaming is not enabled.
 
 ## 8. Authentication and Authorization
 
-SLIMRPC leverages the SLIM network's built-in identity and authentication layer. Every SLIM App is associated with a **Name** and a **credential** (shared secrets or other SLIM-supported schemes such as mTLS).
+SLIMRPC leverages SLIM built-in identity and authentication layer. Every SLIM App is associated with a **Name** and a **credential** (shared secrets or other SLIM-supported schemes such as mTLS).
 
 ### 8.1. SLIM Identity-Based Authentication
 
@@ -296,7 +296,9 @@ Agents that support the SLIMRPC binding **MUST** declare it in their Agent Card 
 
 **Agent Card requirements for SLIMRPC:**
 
-- `url`: The agent's SLIM Name in `namespace/group/name` format
+- `url`: The agent's SLIM Name as a `slim://` URL in `slim://[node-host[:port]/]domain/namespace/service` format. Two forms are supported:
+  - `slim://domain/namespace/service` — when the SLIM node is managed by a controller or configured out-of-band
+  - `slim://node.example.com:46357/domain/namespace/service` — when the node address needs to be explicitly specified
 - `protocolBinding`: Set to `"https://a2a-protocol.org/bindings/experimental-slimrpc"`
 
 **Example Agent Card fragment:**
@@ -304,10 +306,10 @@ Agents that support the SLIMRPC binding **MUST** declare it in their Agent Card 
 ```json
 {
   "name": "Echo Agent",
-  "url": "agntcy/demo/echo_agent",
+  "url": "slim://domain/demo/echo_agent",
   "supportedInterfaces": [
     {
-      "url": "agntcy/demo/echo_agent",
+      "url": "slim://domain/demo/echo_agent",
       "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc"
     }
   ],
@@ -330,7 +332,7 @@ Agents that support the SLIMRPC binding **MUST** declare it in their Agent Card 
       "protocolBinding": "JSONRPC"
     },
     {
-      "url": "agntcy/production/travel_planner",
+      "url": "slim://node.example.com:46357/domain/production/travel_planner",
       "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc"
     }
   ]
@@ -350,12 +352,3 @@ The SLIMRPC binding uses Protocol Buffer binary serialization. All A2A data type
 | Optional fields | Protocol Buffer `optional` / `oneof` semantics        |
 
 Timestamps are encoded natively as `google.protobuf.Timestamp`; ISO 8601 string encoding is not required, unlike JSON-based bindings. Binary content is transmitted as raw `bytes` with no base64 wrapping.
-
-## 11. Reference Implementations
-
-Two reference implementations of the A2A SLIMRPC binding are available:
-
-- **Go:** [github.com/agntcy/slim-a2a-go](https://github.com/agntcy/slim-a2a-go)
-- **Python:** [github.com/agntcy/slim-a2a-python](https://github.com/agntcy/slim-a2a-python)
-
-Both reference implementations are currently pinned to **A2A v0.3.0** and reflect the method names, request types, and response types from that version of the proto. As the proto evolves across A2A versions, implementations **MUST** regenerate their SLIMRPC stubs from the target version's `a2a.proto` using the SLIMRPC compiler plugin. See the [SLIMRPC compiler documentation](https://docs.agntcy.org/slim/slim-slimrpc-compiler/) for details on generating bindings for other languages.
