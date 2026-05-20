@@ -17,15 +17,15 @@ Multicast RPC in SLIMRPC is built on SLIM's native group channel support. A clie
 SLIM group channels follow the same hierarchical naming scheme as individual agent names (see [Section 2.1 of the SLIMRPC binding spec](slimrpc.md#21-slim-names)):
 
 ```
-<org>/<namespace>/<channel name>
+<domain>/<namespace>/<channel name>
 ```
 
 **Examples:**
 
-| SLIM Group Channel Name              | Description                                |
-| :----------------------------------- | :----------------------------------------- |
-| `agntcy/demo/inventory-query`        | A channel for fanning out inventory queries |
-| `myorg/production/classify-request`  | A channel for parallel classification      |
+| SLIM Group Channel Name                | Description                                 |
+| :------------------------------------- | :------------------------------------------ |
+| `mydomain/demo/inventory-query`        | A channel for fanning out inventory queries |
+| `mydomain/production/classify-request` | A channel for parallel classification       |
 
 Group channels differ from individual agent names in how membership works. Agents **cannot** subscribe themselves to a group channel. Instead, the client that creates the channel **MUST** explicitly invite each agent into the group using the agent's individual SLIM name. Once invited, SLIM routes any message sent to the group channel to all current members.
 
@@ -47,10 +47,10 @@ No additional `supportedInterfaces` entry is required for multicast. Any agent t
 ```json
 {
   "name": "Inventory Agent – Warehouse A",
-  "url": "agntcy/demo/inventory-a",
+  "url": "slim://mydomain/demo/inventory-a",
   "supportedInterfaces": [
     {
-      "url": "agntcy/demo/inventory-a",
+      "url": "slim://mydomain/demo/inventory-a",
       "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc"
     }
   ],
@@ -77,9 +77,10 @@ When a client intends to send the same message to multiple agents, it **SHOULD**
 
 When all target agents support multicast, the client proceeds as follows:
 
-1. **Create a group channel** with a SLIM name of the client's choosing, following the `org/namespace/channel-name` format.
-2. **Invite each agent** into the group channel using the individual SLIM name from the agent's multicast `supportedInterfaces` `url` field.
+1. **Create a group channel** with a SLIM name of the client's choosing, following the `domain/namespace/channel-name` format.
+2. **Invite each agent** into the group channel using the individual SLIM name from the agent's SLIMRPC `supportedInterfaces` `url` field.
 3. **Send the request** by invoking `SendMessage` or `SendStreamingMessage` on the group channel, as defined in the base SLIMRPC binding. The message payload and service parameters are identical in structure to a point-to-point request.
+4. **Clean up** by leaving or deleting the group channel once the interaction is complete (see Section 7).
 
 The client **MUST** use a distinct `messageId` for the multicast request. Because each agent processes the request independently, task IDs returned in responses will be agent-specific and **MUST NOT** be assumed to be the same across agents.
 
@@ -89,7 +90,7 @@ All agents respond back over the group channel. The client receives these as ind
 
 ### 7.1. Waiting for Responses
 
-Clients **MUST** wait for a response from every invited agent before considering the multicast interaction complete. A response from one agent does not indicate that others have finished.
+Clients **MUST** wait for an outcome (a response, an error, or a timeout) for every invited agent before considering the multicast interaction complete. A response from one agent does not indicate that others have finished.
 
 Clients **MUST** apply a timeout to the overall collection window. The timeout **SHOULD** be configurable and chosen to account for the expected latency of the slowest participating agent. When the timeout expires, the client **SHOULD** treat any agents that have not yet responded as having failed, and proceed with the partial result set.
 
