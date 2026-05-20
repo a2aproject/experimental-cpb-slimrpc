@@ -30,8 +30,8 @@ SLIM uses a three-component hierarchical naming scheme instead of URL-based addr
 
 | SLIM Name                       | Description                                                    |
 | :------------------------------ | :------------------------------------------------------------- |
-| `mydomain/demo/echo_agent`      | An echo agent in the `myorg` domain and `demo` namespace       |
-| `mydomain/demo/client`          | A client agent in the `myorg` domain and `demo` namespace      |
+| `mydomain/demo/echo_agent`      | An echo agent in the `mydomain` domain and `demo` namespace       |
+| `mydomain/demo/client`          | A client agent in the `mydomain` domain and `demo` namespace      |
 | `mydomain/production/scheduler` | A scheduler agent in production                                |
 
 The SLIM Name serves as the service endpoint address in the Agent Card. Clients resolve the agent's Name from the `url` field of the Agent Card's `supportedInterfaces` entry where `protocolBinding` is `"https://a2a-protocol.org/bindings/experimental-slimrpc"` and where the `url` uses the `domain/namespace/service` naming format.
