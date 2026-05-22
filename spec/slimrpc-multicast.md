@@ -29,7 +29,7 @@ SLIM group channels follow the same hierarchical naming scheme as individual age
 
 Group channels differ from individual agent names in how membership works. Agents **cannot** subscribe themselves to a group channel. Instead, the client that creates the channel **MUST** explicitly invite each agent into the group using the agent's individual SLIM name. Once invited, SLIM routes any message sent to the group channel to all current members.
 
-Group channels are **bidirectional**: responses from agents are sent back over the same channel and are received by the client. There are no separate per-agent response addresses.
+Group channels are **bidirectional**: responses from agents are sent back over the same channel and are received **only by the client that sent the request**. There are no separate per-agent response addresses.
 
 ## 3. Protocol Requirements
 
@@ -78,7 +78,7 @@ When a client intends to send the same message to multiple agents, it **SHOULD**
 When all target agents support multicast, the client proceeds as follows:
 
 1. **Create a group channel** with a SLIM name of the client's choosing, following the `domain/namespace/channel-name` format.
-2. **Invite each agent** into the group channel using the individual SLIM name from the agent's SLIMRPC `supportedInterfaces` `url` field.
+2. **Invite each agent** into the group channel using the individual SLIM name from the agent's SLIMRPC `supportedInterfaces` `url` field. The invitation is a SLIM runtime operation; refer to the SLIM documentation for implementation details.
 3. **Send the request** by invoking `SendMessage` or `SendStreamingMessage` on the group channel, as defined in the base SLIMRPC binding. The message payload and service parameters are identical in structure to a point-to-point request.
 4. **Clean up** by leaving or deleting the group channel once the interaction is complete (see Section 7).
 
@@ -122,4 +122,4 @@ The following conditions are treated as agent-level failures and **MUST NOT** pr
 - An agent's stream terminates with an error
 - An agent does not respond within the collection timeout
 
-A multicast interaction is only considered to have failed at the interaction level if the client is unable to create the group channel or deliver the request to it (for example, the SLIM node is unreachable).
+A multicast interaction is only considered to have failed at the interaction level if the client is unable to create the group channel, invite agents, or deliver the request to it (for example, the SLIM node is unreachable).
