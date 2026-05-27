@@ -57,16 +57,10 @@ The `protocolBinding` identifier for this binding is:
 https://a2a-protocol.org/bindings/experimental-slimrpc
 ```
 
-The full binding specification is in [`spec/slimrpc.md`](spec/slimrpc.md). It covers:
-
-- Protocol requirements and transport identifier
-- SLIM network addressing and node connection
-- Service parameter transmission via SLIMRPC metadata
-- Service definition and method inventory
-- Error handling and status code mapping
-- Streaming semantics and reconnection
-- Authentication via the SLIM identity layer
-- Agent Card declaration
+| Document | Description |
+| :------- | :---------- |
+| [`spec/slimrpc.md`](spec/slimrpc.md) | Core binding specification — protocol requirements, SLIM addressing, service parameters, method inventory, error mapping, streaming, authentication, and Agent Card declaration |
+| [`spec/slimrpc-multicast.md`](spec/slimrpc-multicast.md) | Multicast RPC — sending a single message to multiple agents simultaneously via SLIM group channels, client discovery, and response collection |
 
 ## Reference Implementations
 
