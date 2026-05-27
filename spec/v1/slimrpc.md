@@ -14,7 +14,7 @@ SLIMRPC is an RPC protocol built on top of [SLIM](https://github.com/agntcy/slim
 - **Service Parameters:** Transmitted as a flat string key-value metadata map alongside each request
 - **Streaming:** SLIM unary-stream RPC pattern (unary request, streaming response)
 - **Authentication:** Provided by the SLIM identity layer (shared secrets or other SLIM-supported mechanisms)
-- **Transport Identifier:** `https://a2a-protocol.org/bindings/experimental-slimrpc` (used in Agent Card `protocolBinding` fields)
+- **Transport Identifier:** `https://a2a-protocol.org/bindings/experimental-slimrpc/v1` (used in Agent Card `protocolBinding` fields)
 
 ## 2. SLIM Network and Addressing
 
@@ -34,7 +34,7 @@ SLIM uses a three-component hierarchical naming scheme instead of URL-based addr
 | `mydomain/demo/client`          | A client agent in the `mydomain` domain and `demo` namespace      |
 | `mydomain/production/scheduler` | A scheduler agent in production                                |
 
-The SLIM Name serves as the service endpoint address in the Agent Card. Clients resolve the agent's Name from the `url` field of the Agent Card's `supportedInterfaces` entry where `protocolBinding` is `"https://a2a-protocol.org/bindings/experimental-slimrpc"` and where the `url` uses the `domain/namespace/service` naming format.
+The SLIM Name serves as the service endpoint address in the Agent Card. Clients resolve the agent's Name from the `url` field of the Agent Card's `supportedInterfaces` entry where `protocolBinding` is `"https://a2a-protocol.org/bindings/experimental-slimrpc/v1"` and where the `url` uses the `domain/namespace/service` naming format.
 
 ### 2.2. SLIM Node Connection
 
@@ -299,7 +299,7 @@ Agents that support the SLIMRPC binding **MUST** declare it in their Agent Card 
 - `url`: The agent's SLIM Name as a `slim://` URL in `slim://[node-host[:port]/]domain/namespace/service` format. Two forms are supported:
   - `slim://domain/namespace/service` — when the SLIM node is managed by a controller or configured out-of-band
   - `slim://node.example.com:46357/domain/namespace/service` — when the node address needs to be explicitly specified
-- `protocolBinding`: Set to `"https://a2a-protocol.org/bindings/experimental-slimrpc"`
+- `protocolBinding`: Set to `"https://a2a-protocol.org/bindings/experimental-slimrpc/v1"`
 
 **Example Agent Card fragment:**
 
@@ -310,7 +310,7 @@ Agents that support the SLIMRPC binding **MUST** declare it in their Agent Card 
   "supportedInterfaces": [
     {
       "url": "slim://domain/demo/echo_agent",
-      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc"
+      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc/v1"
     }
   ],
   "capabilities": {
@@ -333,7 +333,7 @@ Agents that support the SLIMRPC binding **MUST** declare it in their Agent Card 
     },
     {
       "url": "slim://node.example.com:46357/domain/production/travel_planner",
-      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc"
+      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc/v1"
     }
   ]
 }
