@@ -63,6 +63,7 @@ https://a2a-protocol.org/bindings/experimental-slimrpc/v1
 | :------ | :------- | :---------- |
 | `v1` | [`spec/v1/slimrpc.md`](spec/v1/slimrpc.md) | Core binding specification — protocol requirements, SLIM addressing, service parameters, method inventory, error mapping, streaming, authentication, and Agent Card declaration |
 | `v1` | [`spec/v1/slimrpc-multicast.md`](spec/v1/slimrpc-multicast.md) | Multicast RPC — sending a single message to multiple agents simultaneously via SLIM group channels, client discovery, and response collection |
+| `v1` | [`spec/v1/slimrpc-collaborative-channel.md`](spec/v1/slimrpc-collaborative-channel.md) | Collaborative Channel — many-to-many interaction via a `Collaborate` bidirectional streaming operation; any channel member (client or agent) may originate and receive messages |
 
 ## Reference Implementations
 
