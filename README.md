@@ -51,16 +51,18 @@ SLIMRPC (also called SRPC) is the RPC layer built on top of SLIM. Like gRPC is P
 
 ## Protocol Binding Specification
 
-The `protocolBinding` identifier for this binding is:
+The `protocolBinding` identifier for this binding is versioned. The current version is `v1`:
 
 ```
-https://a2a-protocol.org/bindings/experimental-slimrpc
+https://a2a-protocol.org/bindings/experimental-slimrpc/v1
 ```
 
-| Document | Description |
-| :------- | :---------- |
-| [`spec/slimrpc.md`](spec/slimrpc.md) | Core binding specification — protocol requirements, SLIM addressing, service parameters, method inventory, error mapping, streaming, authentication, and Agent Card declaration |
-| [`spec/slimrpc-multicast.md`](spec/slimrpc-multicast.md) | Multicast RPC — sending a single message to multiple agents simultaneously via SLIM group channels, client discovery, and response collection |
+### Versioned Specifications
+
+| Version | Document | Description |
+| :------ | :------- | :---------- |
+| `v1` | [`spec/v1/slimrpc.md`](spec/v1/slimrpc.md) | Core binding specification — protocol requirements, SLIM addressing, service parameters, method inventory, error mapping, streaming, authentication, and Agent Card declaration |
+| `v1` | [`spec/v1/slimrpc-multicast.md`](spec/v1/slimrpc-multicast.md) | Multicast RPC — sending a single message to multiple agents simultaneously via SLIM group channels, client discovery, and response collection |
 
 ## Reference Implementations
 

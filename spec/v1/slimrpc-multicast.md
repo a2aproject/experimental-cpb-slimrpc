@@ -34,7 +34,7 @@ Group channels are **bidirectional**: responses from agents are sent back over t
 ## 3. Protocol Requirements
 
 - **Underlying Mechanism:** SLIM group channels (see Section 2)
-- **Prerequisite:** All participating agents must support the base SLIMRPC binding (`https://a2a-protocol.org/bindings/experimental-slimrpc`)
+- **Prerequisite:** All participating agents must support the base SLIMRPC binding (`https://a2a-protocol.org/bindings/experimental-slimrpc/v1`)
 - **Request cardinality:** One request message sent to a group channel
 - **Response cardinality:** One response per participating agent for `SendMessage`; a stream of events per participating agent for `SendStreamingMessage` — all returned over the group channel
 - **Serialization:** Protocol Buffers version 3 (binary encoding), identical to the base SLIMRPC binding
@@ -51,7 +51,7 @@ No additional `supportedInterfaces` entry is required for multicast. Any agent t
   "supportedInterfaces": [
     {
       "url": "slim://mydomain/demo/inventory-a",
-      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc"
+      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc/v1"
     }
   ],
   "capabilities": {
@@ -69,7 +69,7 @@ When a client intends to send the same message to multiple agents, it **SHOULD**
 **Discovery procedure:**
 
 1. Collect the Agent Cards of all target agents.
-2. For each agent, inspect `supportedInterfaces` for an entry with `protocolBinding` equal to `"https://a2a-protocol.org/bindings/experimental-slimrpc"`.
+2. For each agent, inspect `supportedInterfaces` for an entry with `protocolBinding` equal to `"https://a2a-protocol.org/bindings/experimental-slimrpc/v1"`.
 3. If all target agents declare a SLIMRPC interface, the client **SHOULD** use multicast RPC.
 4. If any target agent does not declare a SLIMRPC interface, the client **MUST** fall back to other available transports for those agents.
 
