@@ -29,7 +29,7 @@ This URI **MUST** be listed in the agent's `extensions` field in its Agent Card 
 
 Skills defined by this extension are delivered over the agent's existing point-to-point SLIMRPC interface. Clients **MUST** target the moderator agent's individual SLIM name (not a group channel) when invoking these skills.
 
-Skill routing uses the standard A2A mechanism: each skill declares a unique `inputModes` media type in the Agent Card, and the client sends a `Message` whose `DataPart` carries that media type in its `mimeType` field. The moderator agent routes the request to the correct skill handler by matching the incoming `DataPart.mimeType` against the declared `inputModes` of its skills.
+Skill routing uses the standard A2A mechanism: each skill declares a unique `inputModes` media type in the Agent Card, and the client sends a `Message` whose `DataPart` carries that media type in its `mediaType` field. The moderator agent routes the request to the correct skill handler by matching the incoming `DataPart.mediaType` against the declared `inputModes` of its skills.
 
 This extension defines the following per-skill media types:
 
@@ -102,7 +102,7 @@ An agent implementing only the minimal profile omits `create-channel`, `delete-c
 
 ### 3.1. Request
 
-Clients invoke skills by calling `SendMessage` on the moderator agent's point-to-point SLIM name. The `Message` **MUST** carry exactly one `DataPart` whose `mimeType` is set to the skill's declared input media type (see [Section 2.2](#22-skill-routing)) and whose `data` field contains the skill-specific JSON input object.
+Clients invoke skills by calling `SendMessage` on the moderator agent's point-to-point SLIM name. The `Message` **MUST** carry exactly one `DataPart` whose `mediaType` is set to the skill's declared input media type (see [Section 2.2](#22-skill-routing)) and whose `data` field contains the skill-specific JSON input object.
 
 **Example `SendMessage` request for `list-channels`:**
 
@@ -112,8 +112,7 @@ Clients invoke skills by calling `SendMessage` on the moderator agent's point-to
   "role": "user",
   "parts": [
     {
-      "kind": "data",
-      "mimeType": "application/vnd.a2a.channel-moderator.list-channels+json",
+      "mediaType": "application/vnd.a2a.channel-moderator.list-channels+json",
       "data": {}
     }
   ]
@@ -203,8 +202,7 @@ Returns all channels currently managed by this moderator. Maps to `ListChannelsR
   "role": "user",
   "parts": [
     {
-      "kind": "data",
-      "mimeType": "application/vnd.a2a.channel-moderator.list-channels+json",
+      "mediaType": "application/vnd.a2a.channel-moderator.list-channels+json",
       "data": {}
     }
   ]
@@ -251,8 +249,7 @@ Returns the `Channel` object (including participant list) for a named channel. M
   "role": "user",
   "parts": [
     {
-      "kind": "data",
-      "mimeType": "application/vnd.a2a.channel-moderator.get-channel-info+json",
+      "mediaType": "application/vnd.a2a.channel-moderator.get-channel-info+json",
       "data": { "channel_name": "mydomain/demo/planning-session" }
     }
   ]
@@ -300,8 +297,7 @@ Creates a new SLIM channel and registers it with the moderator. Maps to `CreateC
   "role": "user",
   "parts": [
     {
-      "kind": "data",
-      "mimeType": "application/vnd.a2a.channel-moderator.create-channel+json",
+      "mediaType": "application/vnd.a2a.channel-moderator.create-channel+json",
       "data": {
         "channel_name": "mydomain/demo/new-channel",
         "mls_enabled": false
@@ -347,8 +343,7 @@ Tears down a managed channel. All participants are removed at the SLIM transport
   "role": "user",
   "parts": [
     {
-      "kind": "data",
-      "mimeType": "application/vnd.a2a.channel-moderator.delete-channel+json",
+      "mediaType": "application/vnd.a2a.channel-moderator.delete-channel+json",
       "data": { "channel_name": "mydomain/demo/old-channel" }
     }
   ]
@@ -401,8 +396,7 @@ A denial is a business-logic outcome. Task.status **MUST** remain `completed` an
   "role": "user",
   "parts": [
     {
-      "kind": "data",
-      "mimeType": "application/vnd.a2a.channel-moderator.invite-to-channel+json",
+      "mediaType": "application/vnd.a2a.channel-moderator.invite-to-channel+json",
       "data": {
         "channel_name": "mydomain/demo/planning-session",
         "participant_name": "mydomain/demo/agent-c"
@@ -420,7 +414,7 @@ The `invite-to-channel` skill follows an asynchronous Task flow. The moderator r
 Client                Moderator              SLIM ChannelManagerService
   |                      |                              |
   |--SendMessage-------->|                              |
-  |  mimeType:           |                              |
+  |  mediaType:           |                              |
   |  invite-to-channel   |                              |
   |  {channel_name,      |                              |
   |   participant_name}  |                              |
@@ -457,7 +451,7 @@ Client                Moderator              SLIM ChannelManagerService
 
 **Step-by-step:**
 
-1. Client sends `SendMessage` with a `DataPart` whose `mimeType` is `application/vnd.a2a.channel-moderator.invite-to-channel+json` and `data` is `{ "channel_name": "...", "participant_name": "..." }`.
+1. Client sends `SendMessage` with a `DataPart` whose `mediaType` is `application/vnd.a2a.channel-moderator.invite-to-channel+json` and `data` is `{ "channel_name": "...", "participant_name": "..." }`.
 2. Moderator responds immediately with a `Task` in status `submitted` and a `taskId`.
 3. Client calls `SubscribeToTask(taskId)` to listen for the final outcome.
 4. Moderator evaluates the request against its local policy and authorization rules.
