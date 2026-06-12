@@ -147,11 +147,7 @@ Clients invoke skills by calling `SendMessage` on the moderator agent's point-to
 
 ### 3.2. Response
 
-All skills return an A2A `Task`. The moderator agent responds to `SendMessage` with a `Task` object. The task artifact carries the JSON output object for the skill.
-
-For synchronous skills (`list-channels`, `get-channel-info`, `create-channel`, `delete-channel`), the task **SHOULD** be returned with status `completed` and the result artifact already populated in the `SendMessage` response.
-
-For the asynchronous `invite-to-channel` skill, the `SendMessage` response returns a `Task` with status `submitted`. Clients **MUST** call `SubscribeToTask` to receive the final outcome (see [Section 6](#6-async-invite-flow)).
+All skills return an A2A `Task`. The moderator agent responds to `SendMessage` with a `Task` object. Clients **MUST** follow the standard A2A Task flow: after receiving the initial `Task`, call `SubscribeToTask` to receive status updates and wait for the Task to reach a terminal state (`completed` or `failed`). The task artifact carries the JSON output object for the skill once the Task completes (see [Section 6](#6-invite-to-channel-flow)).
 
 ### 3.3. Error Convention
 
@@ -188,13 +184,13 @@ The `Channel` object represents a single SLIM group channel managed by the moder
 
 All skills use the standard A2A Task flow: `SendMessage` returns a `Task`; results and errors are delivered as Task artifacts. SLIMRPC transport status codes are not used for skill-level outcomes.
 
-| Skill ID            | Response Style | Description |
-| :------------------ | :------------- | :---------- |
-| `list-channels`     | Synchronous    | List all channels managed by this moderator |
-| `get-channel-info`  | Synchronous    | Get metadata and current participant list for a channel |
-| `create-channel`    | Synchronous    | Create a new SLIM channel managed by this moderator |
-| `delete-channel`    | Synchronous    | Tear down a managed channel |
-| `invite-to-channel` | Asynchronous   | Invite a participant to a channel; `participant_name` defaults to the caller's SLIM identity |
+| Skill ID            | Description |
+| :------------------ | :---------- |
+| `list-channels`     | List all channels managed by this moderator |
+| `get-channel-info`  | Get metadata and current participant list for a channel |
+| `create-channel`    | Create a new SLIM channel managed by this moderator |
+| `delete-channel`    | Tear down a managed channel |
+| `invite-to-channel` | Invite a participant to a channel; `participant_name` defaults to the caller's SLIM identity |
 
 ### 5.1. `list-channels`
 
@@ -389,8 +385,6 @@ If `participant_name` is omitted, the moderator **MUST** default to the caller's
 | `channel_name`     | string | yes      | Channel to invite the participant into |
 | `participant_name` | string | no       | SLIM name of the participant to invite; defaults to the caller's SLIM identity |
 
-This skill is **asynchronous**: the moderator may need to evaluate policy or authorization before acting. The `SendMessage` response returns a `Task` with status `submitted`. The client **MUST** call `SubscribeToTask(taskId)` to receive the final outcome.
-
 **Output (grant):** Task `completed` with artifact:
 
 ```json
@@ -432,9 +426,9 @@ A denial is a business-logic outcome. Task.status **MUST** remain `completed` an
 }
 ```
 
-## 6. Async Invite Flow
+## 6. `invite-to-channel` Flow
 
-The `invite-to-channel` skill follows an asynchronous Task flow. The moderator returns immediately with a `submitted` Task and completes the invite asynchronously after evaluating policy and calling the SLIM `ChannelManagerService`.
+The `invite-to-channel` skill requires the moderator to evaluate policy and call the SLIM `ChannelManagerService` before the outcome is known. The following sequence illustrates the full Task flow.
 
 ```
 Client                Moderator              SLIM ChannelManagerService
@@ -478,8 +472,8 @@ Client                Moderator              SLIM ChannelManagerService
 **Step-by-step:**
 
 1. Client sends `SendMessage` with a `DataPart` whose `mediaType` is `application/vnd.a2a.channel-moderator.invite-to-channel+json` and `data` is `{ "channel_name": "...", "participant_name": "..." }`.
-2. Moderator responds immediately with a `Task` in status `submitted` and a `taskId`.
-3. Client calls `SubscribeToTask(taskId)` to listen for the final outcome.
+2. Moderator responds with a `Task` and a `taskId`.
+3. Client calls `SubscribeToTask(taskId)` to receive status updates.
 4. Moderator evaluates the request against its local policy and authorization rules.
 5. Moderator calls `AddParticipant` on the SLIM `ChannelManagerService`.
    - **Grant path:** SLIM adds the participant; the moderator transitions the Task to `completed` with artifact `{ "granted": true, ... }`.
@@ -493,7 +487,7 @@ Every skill output includes a `success` boolean, mirroring the SLIM `CommandResp
 
 | Condition | Task Status | Artifact |
 | :--- | :--- | :--- |
-| Normal outcome (any synchronous skill) | `completed` | `{ "success": true, ... }` |
+| Normal outcome (any skill) | `completed` | `{ "success": true, ... }` |
 | Skill-level error (not found, bad input, unauthorized, etc.) | `completed` | `{ "success": false, "error": "..." }` |
 | Invite granted | `completed` | `{ ..., "granted": true }` |
 | Invite denied by moderator policy | `completed` | `{ ..., "granted": false, "reason": "..." }` |
