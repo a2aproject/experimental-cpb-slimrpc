@@ -48,13 +48,17 @@ An agent that implements the full dedicated moderator profile **MUST** declare t
 ```json
 {
   "name": "Channel Moderator Agent",
-  "url": "slim://mydomain/demo/moderator",
+  "description": "A dedicated moderator agent that manages SLIM group channels on behalf of participants via A2A skills.",
+  "version": "1.0.0",
   "supportedInterfaces": [
     {
       "url": "slim://mydomain/demo/moderator",
-      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc/v1"
+      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc/v1",
+      "protocolVersion": "1.0"
     }
   ],
+  "defaultInputModes": ["application/json"],
+  "defaultOutputModes": ["application/json"],
   "capabilities": {
     "streaming": true,
     "extensions": [
