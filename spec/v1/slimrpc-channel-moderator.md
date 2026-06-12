@@ -23,7 +23,7 @@ The extension URI for this specification is:
 https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/channel-moderator/v1
 ```
 
-This URI **MUST** be listed in the agent's `extensions` field in its Agent Card whenever the agent implements any skill defined by this extension.
+This URI **MUST** be declared in `capabilities.extensions` in the agent's Agent Card, as the `uri` field of an `AgentExtension` object, whenever the agent implements any skill defined by this extension.
 
 ### 2.2. Skill Routing
 
@@ -43,7 +43,7 @@ This extension defines the following per-skill media types:
 
 ### 2.3. Agent Card Example
 
-An agent that implements the full dedicated moderator profile **MUST** declare the extension URI and **SHOULD** include a `skills` entry for each skill it supports.
+An agent that implements the full dedicated moderator profile **MUST** declare the extension in `capabilities.extensions` and **SHOULD** include a `skills` entry for each skill it supports.
 
 ```json
 {
@@ -56,39 +56,61 @@ An agent that implements the full dedicated moderator profile **MUST** declare t
     }
   ],
   "capabilities": {
-    "streaming": true
+    "streaming": true,
+    "extensions": [
+      {
+        "uri": "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/channel-moderator/v1",
+        "description": "Exposes SLIM group channel management as A2A skills, enabling peer agents to discover, create, and request access to channels.",
+        "required": false
+      }
+    ]
   },
-  "extensions": [
-    "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/channel-moderator/v1"
-  ],
   "skills": [
     {
       "id": "list-channels",
       "name": "List Channels",
+      "description": "Returns the names of all SLIM group channels currently managed by this moderator.",
+      "tags": ["channel", "discovery"],
+      "examples": ["List all available channels"],
       "inputModes": ["application/vnd.a2a.channel-moderator.list-channels+json"],
       "outputModes": ["application/json"]
     },
     {
       "id": "get-channel-info",
       "name": "Get Channel Info",
+      "description": "Returns metadata and the current participant list for a named SLIM group channel.",
+      "tags": ["channel", "discovery"],
+      "examples": ["Get info for channel mydomain/demo/planning-session"],
       "inputModes": ["application/vnd.a2a.channel-moderator.get-channel-info+json"],
       "outputModes": ["application/json"]
     },
     {
       "id": "create-channel",
       "name": "Create Channel",
+      "description": "Creates a new SLIM group channel and registers it with this moderator.",
+      "tags": ["channel", "management"],
+      "examples": ["Create a new channel mydomain/demo/new-channel with MLS enabled"],
       "inputModes": ["application/vnd.a2a.channel-moderator.create-channel+json"],
       "outputModes": ["application/json"]
     },
     {
       "id": "delete-channel",
       "name": "Delete Channel",
+      "description": "Tears down a managed SLIM group channel and removes all participants.",
+      "tags": ["channel", "management"],
+      "examples": ["Delete channel mydomain/demo/old-channel"],
       "inputModes": ["application/vnd.a2a.channel-moderator.delete-channel+json"],
       "outputModes": ["application/json"]
     },
     {
       "id": "invite-to-channel",
       "name": "Invite to Channel",
+      "description": "Requests that the moderator invite a participant into a managed SLIM group channel. If no participant is specified, the caller's own SLIM identity is used.",
+      "tags": ["channel", "membership"],
+      "examples": [
+        "Invite mydomain/demo/agent-c to channel mydomain/demo/planning-session",
+        "Add me to channel mydomain/demo/planning-session"
+      ],
       "inputModes": ["application/vnd.a2a.channel-moderator.invite-to-channel+json"],
       "outputModes": ["application/json"]
     }
@@ -96,7 +118,7 @@ An agent that implements the full dedicated moderator profile **MUST** declare t
 }
 ```
 
-An agent implementing only the minimal profile omits `create-channel`, `delete-channel`, and `get-channel-info` from the `skills` array, but still declares the extension URI.
+An agent implementing only the minimal profile omits `create-channel`, `delete-channel`, and `get-channel-info` from the `skills` array, but still declares the extension in `capabilities.extensions`.
 
 ## 3. Message Format
 
