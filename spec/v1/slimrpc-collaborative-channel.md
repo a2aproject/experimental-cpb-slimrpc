@@ -51,7 +51,7 @@ Agents **cannot** subscribe themselves to a group channel. The client that creat
 - **Prerequisites:** All participating members **MUST** support the base SLIMRPC binding (`https://a2a-protocol.org/bindings/experimental-slimrpc/v1`) as described in [slimrpc.md](slimrpc.md); SLIM group channel support as described in [slimrpc-multicast.md](slimrpc-multicast.md) is also required
 - **Standard multicast RPC:** `SendMessage` and `SendStreamingMessage` remain available as defined in [slimrpc-multicast.md](slimrpc-multicast.md); their semantics are unchanged
 - **Collaborative RPC:** the `Collaborate` method (Section 4) is the new operation introduced by this specification
-- **Message attribution:** the SLIM transport includes the sender's identity in the `src` field of every message; no additional SLIMRPC metadata is required for attribution
+- **Message attribution:** the SLIMRPC layer **MUST** populate the `slim-src` key in the A2A `Message.metadata` field of every `Message` sent in a `Collaborate` session, allowing A2A-level recipients to identify the sender without inspecting the SLIM transport layer (see [Section 4.6](#46-message-attribution))
 
 ## 4. The `Collaborate` Operation
 
@@ -87,14 +87,43 @@ Any member participating in an active `Collaborate` session **MAY** send a `Mess
 - Messages sent by the session initiator are carried on the request stream and delivered to all channel members
 - Messages sent by other participants are carried on their individual response streams and delivered to all channel members by the SLIM Group Channel broadcast
 - A participant **MAY** additionally use SLIM's native MLS addressed messaging to direct a `Message` to a specific channel member, in which case only the addressed member is expected to respond
+- The SLIMRPC layer **MUST** set `metadata["slim-src"]` to the sender's SLIM name on every outbound `Message` before delivery (see [Section 4.6](#46-message-attribution))
 
 ### 4.4. Receiving Messages
 
 All channel members receive `Message` objects sent by any other participant in the same session:
 
+- A recipient **MUST** use the `metadata["slim-src"]` field to identify the sender at the A2A layer (see [Section 4.6](#46-message-attribution))
 - A recipient **SHOULD** process any received `Message` according to its agent logic; the message **SHOULD** be treated as equivalent to a standard inbound request
 - A recipient **MAY** respond by sending its own `Message` on the session stream; this response is in turn delivered to all other session members
 - Recipients are **NOT REQUIRED** to respond to every received message; selective participation is valid
+
+### 4.6. Message Attribution
+
+Every `Message` sent in a `Collaborate` session **MUST** carry the sender's SLIM name in its `metadata` field under the key `slim-src`. The SLIMRPC layer populates this field automatically from the SLIM transport `src` field before delivering the message to the A2A layer; application code does not need to set it manually.
+
+| Metadata Key | Type   | Description |
+| :----------- | :----- | :---------- |
+| `slim-src`   | string | SLIM name of the sender in `domain/namespace/service` format |
+
+Recipients **MUST** use `metadata["slim-src"]` for sender attribution at the A2A layer. Relying on the SLIM transport `src` field alone is insufficient because it is not visible to A2A application code.
+
+**Example `Message` with `slim-src` populated:**
+
+```json
+{
+  "messageId": "msg-42",
+  "role": "agent",
+  "parts": [
+    {
+      "data": { "status": "subtask complete", "result": "..." }
+    }
+  ],
+  "metadata": {
+    "slim-src": "mydomain/demo/agent-a"
+  }
+}
+```
 
 ### 4.5. Stream Lifecycle
 
@@ -154,11 +183,11 @@ Client          Channel         Agent A         Agent B
   |               |-Collaborate------------------>|
   |               |               |               |
   |               |<--[Message]---|               |  (Agent A sends)
-  |<--[Message]---|  src=Agent A  |               |
+  |<--[Message]---|slim-src=AgentA|               |
   |               |--[Message]-------------------->|
   |               |               |               |
   |               |<--------[Message]-------------|  (Agent B responds)
-  |<--[Message]---|  src=Agent B  |               |
+  |<--[Message]---|slim-src=AgentB|               |
   |               |--[Message]---->               |
 ```
 
@@ -178,7 +207,7 @@ Client 1        Channel           Agent         Client 2
   |               |-[Message]-------------------->|
   |               |               |               |
   |               |<--[Message]---|               |  (Agent responds)
-  |<--[Message]---|  src=Agent    |               |
+  |<--[Message]---|slim-src=Agent |               |
   |               |--[Message]-------------------->|
 ```
 
