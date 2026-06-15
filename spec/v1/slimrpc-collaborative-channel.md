@@ -48,7 +48,7 @@ Agents **cannot** subscribe themselves to a group channel. The client that creat
 ## 3. Protocol Requirements
 
 - **Underlying Mechanism:** SLIM group channels (see Section 2)
-- **Prerequisites:** All participating members **MUST** support the base SLIMRPC binding (`https://a2a-protocol.org/bindings/experimental-slimrpc`) as described in [slimrpc.md](slimrpc.md); SLIM group channel support as described in [slimrpc-multicast.md](slimrpc-multicast.md) is also required
+- **Prerequisites:** All participating members **MUST** support the base SLIMRPC binding (`https://a2a-protocol.org/bindings/experimental-slimrpc/v1`) as described in [slimrpc.md](slimrpc.md); SLIM group channel support as described in [slimrpc-multicast.md](slimrpc-multicast.md) is also required
 - **Standard multicast RPC:** `SendMessage` and `SendStreamingMessage` remain available as defined in [slimrpc-multicast.md](slimrpc-multicast.md); their semantics are unchanged
 - **Collaborative RPC:** the `Collaborate` method (Section 4) is the new operation introduced by this specification
 - **Message attribution:** the SLIM transport includes the sender's identity in the `src` field of every message; no additional SLIMRPC metadata is required for attribution
@@ -69,7 +69,7 @@ Because the method is invoked on a SLIM group channel, any member may send a `Me
 | :---------------------- | :------------- | :-------------- |
 | Bidirectional streaming | `Message`      | `Message`       |
 
-The SLIM header metadata carries an **RPC ID** that is assigned when the RPC is initiated. This RPC ID identifies the specific **Collaborate session** and allows recipients to accept or discard messages from sessions they are not participating in.
+The SLIM header metadata carries an **RPC ID** that is assigned when the RPC is initiated. This RPC ID identifies the specific **Collaborate session** and allows recipients to demultiplex concurrent sessions on the same channel.
 
 ### 4.2. Collaborate Sessions
 
@@ -77,7 +77,7 @@ A **Collaborate session** is a single `Collaborate` RPC invocation, identified b
 
 - Any channel member **MAY** initiate a new session by invoking `Collaborate` on the channel; the RPC is delivered to all channel members via the SLIM Group Channel broadcast
 - Any member that receives a `Collaborate` invocation **MAY** choose to participate by sending `Message` objects on its response stream
-- Members **MUST** discard inbound `Collaborate` messages whose RPC ID does not correspond to a session they wish to handle
+- A member that does not wish to join a session **SHOULD** send an EOS (End of Stream) on its response stream to signal non-participation to the other members; this closes only that member's stream for this RPC and does not affect the member's participation in the SLIM group channel or in other concurrent sessions
 - Multiple concurrent sessions **MAY** exist on the same channel, each distinguished by its RPC ID
 
 ### 4.3. Sending Messages
@@ -98,8 +98,8 @@ All channel members receive `Message` objects sent by any other participant in t
 
 ### 4.5. Stream Lifecycle
 
-- Any member **MAY** close its own half of the stream independently; this does not affect other members' streams
-- The session continues as long as at least one member has an active stream
+- Any member **MAY** close its own half of the stream independently by sending an EOS; this does not affect other members' streams or their membership in the SLIM group channel
+- The session continues as long as at least two members have active streams; when only one member remains, that member **SHOULD** close its stream to end the session
 - When the SLIM group channel is torn down (see Section 8.3), all open `Collaborate` streams **MUST** be terminated
 
 ## 5. Message Flows
@@ -190,28 +190,35 @@ Agents that support the `Collaborate` operation **MUST** declare this using the 
 https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborate/v1
 ```
 
-This URI **MUST** be included in the agent's Agent Card `extensions` field. No new `protocolBinding` identifier or additional `supportedInterfaces` entry is required; the existing SLIMRPC binding entry is sufficient.
+This URI **MUST** be declared in `capabilities.extensions` in the agent's Agent Card, as the `uri` field of an `AgentExtension` object. No new `protocolBinding` identifier or additional `supportedInterfaces` entry is required; the existing SLIMRPC binding entry is sufficient.
 
 **Example Agent Card fragment with `Collaborate` support:**
 
 ```json
 {
   "name": "Planning Agent",
-  "url": "slim://mydomain/demo/planning-agent",
+  "description": "A collaborative planning agent that participates in multi-agent SLIM group channel sessions.",
+  "version": "1.0.0",
   "supportedInterfaces": [
     {
       "url": "slim://mydomain/demo/planning-agent",
-      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc"
+      "protocolBinding": "https://a2a-protocol.org/bindings/experimental-slimrpc/v1",
+      "protocolVersion": "1.0"
     }
   ],
+  "defaultInputModes": ["application/json"],
+  "defaultOutputModes": ["application/json"],
   "capabilities": {
-    "streaming": true
+    "streaming": true,
+    "extensions": [
+      {
+        "uri": "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborate/v1",
+        "description": "Supports bidirectional collaborative messaging on SLIM group channels.",
+        "required": false
+      }
+    ]
   },
-  "extensions": [
-    {
-      "uri": "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborate/v1"
-    }
-  ]
+  "skills": []
 }
 ```
 
