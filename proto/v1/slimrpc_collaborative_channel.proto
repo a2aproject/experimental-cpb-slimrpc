@@ -1,0 +1,78 @@
+// Copyright 2025 The A2A Authors
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// SLIMRPC Collaborative Channel extension.
+//
+// This file defines the CollaborativeChannelService, which extends the
+// SLIMRPC A2A binding with a bidirectional streaming Collaborate operation
+// for many-to-many agent communication on SLIM group channels.
+//
+// See: spec/v1/slimrpc-collaborative-channel.md
+
+syntax = "proto3";
+
+package experimental.slimrpc.collaborative_channel.v1;
+
+option go_package = "github.com/a2aproject/experimental-cpb-slimrpc/proto/v1;collaborative_channel_v1";
+option java_multiple_files = true;
+option java_outer_classname = "SlimrpcCollaborativeChannel";
+option java_package = "org.a2aproject.experimental.slimrpc.collaborative_channel.v1";
+
+// The A2A proto is imported for the Message type.
+// Import path assumes the a2a.proto file is available on the protoc include
+// path under lf/a2a/v1/a2a.proto (matching its package: lf.a2a.v1).
+// Source: https://github.com/a2aproject/A2A/blob/main/specification/a2a.proto
+import "lf/a2a/v1/a2a.proto";
+
+// CollaborativeChannelService defines the Collaborate bidirectional streaming
+// operation for SLIM group channels. It is invoked on a SLIM group channel
+// (not a point-to-point SLIM name), causing the RPC to be broadcast to every
+// current member of the channel.
+//
+// Any channel member — whether a client or an agent — may invoke Collaborate.
+// Multiple concurrent sessions MAY exist on the same channel, each identified
+// by its SLIM header RPC ID.
+//
+// Agents that implement this service MUST declare the extension URI
+// "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborate/v1"
+// in their Agent Card capabilities.extensions field.
+service CollaborativeChannelService {
+  // Collaborate opens a bidirectional streaming session on a SLIM group
+  // channel. Both the initiator and any participating member exchange
+  // lf.a2a.v1.Message objects in both directions simultaneously.
+  //
+  // Session lifecycle:
+  //   - Any channel member MAY initiate a new session by invoking this RPC.
+  //     The invocation is broadcast to all channel members via the SLIM Group
+  //     Channel mechanism.
+  //   - Receiving members MAY choose to participate by sending Messages on
+  //     their response stream, or SHOULD send EOS to signal non-participation.
+  //     Sending EOS closes only that member's stream for this session; it does
+  //     not affect the member's channel membership or other concurrent sessions.
+  //   - When only one member remains active in a session, that member SHOULD
+  //     close its stream to end the session.
+  //   - When the SLIM group channel is torn down, all open Collaborate streams
+  //     MUST be terminated.
+  //
+  // Message attribution:
+  //   The SLIMRPC layer MUST populate metadata["slim-src"] on every outbound
+  //   Message with the sender's SLIM name (domain/namespace/service format)
+  //   before delivering the Message to the A2A layer. Recipients MUST use
+  //   metadata["slim-src"] to identify the sender at the A2A layer; relying
+  //   solely on the SLIM transport src field is insufficient as it is not
+  //   visible to A2A application code.
+  //
+  // Example metadata["slim-src"] value: "mydomain/demo/agent-a"
+  rpc Collaborate(stream lf.a2a.v1.Message) returns (stream lf.a2a.v1.Message);
+}
