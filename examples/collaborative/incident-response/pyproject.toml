@@ -1,0 +1,10 @@
+[project]
+name = "incident-response"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "a2a-sdk[telemetry,sqlite]==1.0.0-alpha.0",
+    "slima2a>=0.6.0",
+    "httpx >= 0.28.1",
+    "packaging>=26.2",
+]

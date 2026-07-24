@@ -65,6 +65,12 @@ https://a2a-protocol.org/bindings/experimental-slimrpc/v1
 | `v1` | [`spec/v1/slimrpc-multicast.md`](spec/v1/slimrpc-multicast.md) | Multicast RPC — sending a single message to multiple agents simultaneously via SLIM group channels, client discovery, and response collection |
 | `v1` | [`spec/v1/slimrpc-collaborative-channel.md`](spec/v1/slimrpc-collaborative-channel.md) | Collaborative Channel — many-to-many interaction via a `Collaborate` bidirectional streaming operation; any channel member (client or agent) may originate and receive messages |
 
+## Examples
+
+| Example | Description |
+| :------ | :---------- |
+| [`examples/collaborative/incident-response`](examples/collaborative/incident-response/README.md) | Four-agent incident response using the Collaborative Channel `Collaborate` operation — monitoring, log analysis, diagnostics, and remediation agents working together on a SLIM group channel |
+
 ## Reference Implementations
 
 | Language | Repository | A2A versions |
