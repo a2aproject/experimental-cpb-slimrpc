@@ -112,7 +112,95 @@ When using `SendStreamingMessage`, each agent produces its own independent strea
 
 SLIM identifies the sender of each message received on the group channel, allowing the client to attribute each response to the agent that produced it. Clients **SHOULD** associate each response with the originating agent's SLIM name and Agent Card identity for downstream processing.
 
-## 8. Error Handling
+## 8. Multicast `SendLiveMessage` (Bidirectional Streaming)
+
+### 8.1. Overview
+
+`SendLiveMessage` is the bidirectional streaming method introduced in A2A 1.1. In the multicast (fan-out) mode, a client sends a single `SendLiveMessage` to a SLIM group channel and establishes N independent duplex streams — one with each participating agent — over that channel.
+
+This section covers the **fan-out** routing mode in which each agent's response stream is delivered only to the initiating client. For the **broadcast** routing mode in which all messages are delivered to all channel members, see the [SLIMRPC Broadcast Live Messaging specification](slimrpc-collaborative-channel.md).
+
+**Requirements:**
+
+- All participating agents **MUST** support A2A 1.1 or later (which introduces `SendLiveMessage`)
+- All participants **MUST** support the base SLIMRPC binding (`https://a2a-protocol.org/bindings/experimental-slimrpc/v1`)
+- The client **MUST** declare `A2A-Version: 1.1` (or later) in SLIMRPC metadata on the `SendLiveMessage` call
+
+### 8.2. Routing Mode Signal
+
+The routing mode is signalled by the `slimrpc-live-routing` metadata key on the `SendLiveMessage` call:
+
+| Value | Routing Mode |
+| :--- | :--- |
+| `fanout` (default) | N independent streams; each agent's responses delivered to initiator only |
+| `broadcast` | All messages delivered to all channel members (see [slimrpc-collaborative-channel.md](slimrpc-collaborative-channel.md)) |
+
+When `slimrpc-live-routing` is absent, `fanout` is assumed.
+
+### 8.3. Fan-out Stream Model
+
+The initiating client sends `StreamRequest` items on a single outbound stream to the SLIM group channel. SLIM delivers each `StreamRequest` to all agents in the channel. Each agent maintains its own independent inbound and outbound stream with the initiator:
+
+```
+Client          Channel         Agent A         Agent B
+  |               |               |               |
+  |-SendLiveMsg-->|               |               |  (slimrpc-live-routing: fanout)
+  |               |-SendLiveMsg-->|               |
+  |               |-SendLiveMsg------------------>|
+  |               |               |               |
+  |               |<--(Task A)----|               |  (Agent A: initial Task)
+  |<--(Task A)----|               |               |
+  |               |<--(Task B)---------------------|  (Agent B: initial Task)
+  |<--(Task B)----|               |               |
+  |               |               |               |
+  |-[StreamReq]-->|               |               |  (Client: follow-up message)
+  |               |-[StreamReq]-->|               |
+  |               |-[StreamReq]------------------>|
+  |               |               |               |
+  |               |<--(events)----|               |  (Agent A: status/artifact updates)
+  |<--(events)----|               |               |
+  |               |<--(events)---------------------|  (Agent B: status/artifact updates)
+  |<--(events)----|               |               |
+```
+
+Agent responses are invisible to other agents. Agent A's `StreamResponse` items are delivered only to the initiating client; Agent B does not see them, and vice versa.
+
+### 8.4. Task Management
+
+Each agent creates its own `Task` in response to `SendLiveMessage` and assigns its own server-generated `contextId` per the A2A specification. Agent-generated `contextId` values are opaque to the client and are not required to be the same across agents (see [Section 3.4.1 of the A2A specification](https://a2a-protocol.org/v1.1.0/specification/#341-context-identifier-semantics)).
+
+The client receives the initial `Task` object (including its agent-assigned `contextId`) as the first `StreamResponse` from each agent. The client **MUST** record each agent's SLIM name, task ID, and `contextId` from these initial responses.
+
+On all subsequent `StreamRequest` items the client **MUST** include a `slimrpc-context-map` metadata entry: a JSON object mapping each agent's SLIM name to the `contextId` that agent assigned during session initiation:
+
+```json
+{
+  "mydomain/demo/agent-a": "ctx-agent-a-7f3c",
+  "mydomain/demo/agent-b": "ctx-agent-b-9b21"
+}
+```
+
+The SLIMRPC transport **MUST** rewrite the `contextId` field of each outbound message to the value from `slimrpc-context-map` that corresponds to the destination agent's SLIM name before delivery. This rewrite is transparent to the agent — it sees its own `contextId` as if the message were a normal point-to-point call.
+
+Task IDs are agent-specific. The client **MUST NOT** assume task IDs or `contextId` values are the same across agents.
+
+### 8.5. Response Collection
+
+Response collection follows the same rules as multicast `SendStreamingMessage` (Section 7):
+
+- Each agent's stream is collected independently
+- Agent failure isolation applies per Section 7.2
+- A timeout **SHOULD** be applied to the overall session
+- The client **SHOULD** associate each `StreamResponse` with the originating agent's SLIM name (available from SLIM attribution)
+
+### 8.6. Stream Lifecycle
+
+- The client **MAY** close its outbound stream to signal it will send no further `StreamRequest` items; this does not close the agents' response streams
+- Each agent closes its outbound stream independently when its task reaches a terminal state
+- Any member **MAY** cancel its participation by closing its stream; this does not affect other agents' streams or the SLIM group channel membership
+- When the SLIM group channel is torn down, all open `SendLiveMessage` streams **MUST** be terminated
+
+## 9. Error Handling
 
 Error responses from individual agents use the same SLIMRPC status codes and error structure defined in [Section 6 of the binding spec](slimrpc.md#6-error-handling). No additional multicast-specific error codes are defined.
 
@@ -123,3 +211,5 @@ The following conditions are treated as agent-level failures and **MUST NOT** pr
 - An agent does not respond within the collection timeout
 
 A multicast interaction is only considered to have failed at the interaction level if the client is unable to create the group channel, invite agents, or deliver the request to it (for example, the SLIM node is unreachable).
+
+The same failure isolation rules apply to multicast `SendLiveMessage` streams (Section 8).
