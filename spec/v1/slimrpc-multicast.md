@@ -158,9 +158,11 @@ Agent responses are invisible to other agents. Agent A's `StreamResponse` items 
 
 Each agent creates its own `Task` in response to `SendLiveMessage` and assigns its own server-generated `contextId` per the A2A specification. Agent-generated `contextId` values are opaque to the client and are not required to be the same across agents (see [Section 3.4.1 of the A2A specification](https://a2a-protocol.org/v1.1.0/specification/#341-context-identifier-semantics)).
 
-The client receives the initial `Task` object (including its agent-assigned `contextId`) as the first `StreamResponse` from each agent. The client **MUST** record each agent's SLIM name, task ID, and `contextId` from these initial responses.
+Because a single broadcast `StreamRequest` is delivered to all agents simultaneously, `contextId` rewriting is performed on the **receive side**: each agent's SLIMRPC transport injects the correct `contextId` into every inbound `StreamRequest` before passing it to the agent executor. The client never sets a `contextId` on outbound messages.
 
-On all subsequent `StreamRequest` items the client **MUST** include a `slimrpc-context-map` metadata entry: a JSON object mapping each agent's SLIM name to the `contextId` that agent assigned during session initiation:
+**New sessions:** the client does not supply a `contextId` mapping. Each agent creates a `Task` with its own server-generated `contextId`; the agent's SLIMRPC transport caches that value at task creation time and injects it into all subsequent inbound `StreamRequest` items for the session.
+
+**Continuing an existing context:** if the client wants all agents to continue a prior context, it **MAY** include a `slimrpc-context-map` metadata entry on the initial `SendLiveMessage` call — a JSON object mapping each agent's SLIM name to the `contextId` previously assigned by that agent:
 
 ```json
 {
@@ -169,7 +171,7 @@ On all subsequent `StreamRequest` items the client **MUST** include a `slimrpc-c
 }
 ```
 
-The SLIMRPC transport **MUST** rewrite the `contextId` field of each outbound message to the value from `slimrpc-context-map` that corresponds to the destination agent's SLIM name before delivery. This rewrite is transparent to the agent — it sees its own `contextId` as if the message were a normal point-to-point call.
+Each agent's SLIMRPC transport reads this map from the session initiation metadata, locates its own SLIM name, and caches the corresponding `contextId`. It then injects that value into all inbound `StreamRequest` items for the session lifetime, overriding whatever `contextId` the client message carried.
 
 Task IDs are agent-specific. The client **MUST NOT** assume task IDs or `contextId` values are the same across agents.
 

@@ -47,9 +47,13 @@ Any channel member **MAY** initiate a broadcast live session by invoking `SendLi
 
 Each agent creates its own `Task` independently and assigns its own server-generated `contextId` per the A2A specification (see [Section 3.4.1](https://a2a-protocol.org/v1.1.0/specification/#341-context-identifier-semantics)). Agent-generated `contextId` values are opaque to other participants and are not required to be the same across agents.
 
-Each agent **MUST** create a `Task` in response to the `SendLiveMessage` and return the initial `Task` object as the first `StreamResponse`. Because SLIM broadcasts this response to all channel members, every participant learns every agent's task ID and `contextId` without additional signalling. Participants **MUST** record the per-agent `{ SLIM name → contextId }` mapping from these initial responses.
+Each agent **MUST** create a `Task` in response to the `SendLiveMessage` and return the initial `Task` object as the first `StreamResponse`. Because SLIM broadcasts this response to all channel members, every participant learns every agent's task ID and `contextId` without additional signalling.
 
-On all subsequent `StreamRequest` items, participants **MUST** include a `slimrpc-context-map` metadata entry as defined in [Section 8.3 of the Multicast RPC spec](slimrpc-multicast.md#83-task-management). The SLIMRPC transport rewrites the `contextId` field of each outbound message to the destination agent's value from this map before delivery, so each agent always sees its own `contextId` transparently. The `slim-peer-task-id` metadata key (see [Section 6](#6-message-attribution)) allows subsequent events to be attributed to the correct per-agent task.
+Because a broadcast `SendLiveMessage` is delivered to all agents simultaneously, `contextId` rewriting is performed on the **receive side**: each agent's SLIMRPC transport injects the correct `contextId` into every inbound `StreamRequest` — whether it originates from the client or from a translated peer `StreamResponse` — before passing it to the agent executor.
+
+For new sessions each agent's transport caches its own `contextId` from the `Task` it creates at session initiation. If the client wants all agents to continue a prior context, it **MAY** include a `slimrpc-context-map` metadata entry on the initial `SendLiveMessage` call (as defined in [Section 8.3 of the Multicast RPC spec](slimrpc-multicast.md#83-task-management)); each agent's transport reads its own entry from this map and caches it instead.
+
+The `slim-peer-task-id` metadata key (see [Section 6](#6-message-attribution)) allows subsequent events to be attributed to the correct per-agent task.
 
 ### 4.2. The Group Chat Model
 
@@ -93,7 +97,7 @@ The synthetic state-change `Message` for a `TaskStatusUpdateEvent` without `stat
 
 ### 5.2. `contextId` Rewriting
 
-Before delivering a translated `StreamRequest` to a receiving agent, the SLIMRPC runtime **MUST** rewrite its `contextId` field to the value from the session's `slimrpc-context-map` that corresponds to the receiving agent's SLIM name. This ensures that peer-originated messages arrive with the correct `contextId` for that agent's task, exactly as if they had been sent by a direct client.
+Before passing a translated `StreamRequest` to the receiving agent's executor, the SLIMRPC runtime **MUST** inject the agent's cached `contextId` (acquired at session initiation — see [Section 4.1](#41-session-initiation)) into the message. This ensures that peer-originated messages arrive with the correct `contextId` for that agent's task, exactly as if they had been sent by a direct client.
 
 ### 5.3. Echo Suppression
 
