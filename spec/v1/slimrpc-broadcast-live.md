@@ -36,7 +36,7 @@ Broadcast live messaging uses the same SLIM group channel mechanism as multicast
 - **Underlying mechanism:** SLIM group channels
 - **Prerequisites:** All participating members **MUST** support A2A 1.1 or later and the base SLIMRPC binding (`https://a2a-protocol.org/bindings/experimental-slimrpc/v1`); SLIM group channel support as described in [slimrpc-multicast.md](slimrpc-multicast.md) is also required
 - **Method:** `SendLiveMessage` as defined in A2A 1.1; no new RPC method is introduced
-- **Routing signal:** `slimrpc-live-routing: broadcast` in SLIMRPC call metadata (see [Section 8.2 of the Multicast RPC spec](slimrpc-multicast.md#82-routing-mode-signal))
+- **Routing signal:** `slimrpc-live-routing: broadcast` in SLIMRPC call metadata; absent = standard multicast (see [slimrpc.md reserved metadata keys](slimrpc.md#3-service-parameter-transmission))
 - **Message attribution:** the SLIMRPC layer **MUST** populate the `slim-src` key in `StreamRequest` metadata on every item delivered to a receiving member, identifying the original sender (see [Section 6](#6-message-attribution))
 
 ## 4. Session Model
@@ -49,7 +49,7 @@ Each agent creates its own `Task` independently and assigns its own server-gener
 
 Each agent **MUST** create a `Task` in response to the `SendLiveMessage` and return the initial `Task` object as the first `StreamResponse`. Because SLIM broadcasts this response to all channel members, every participant learns every agent's task ID and `contextId` without additional signalling. Participants **MUST** record the per-agent `{ SLIM name → contextId }` mapping from these initial responses.
 
-On all subsequent `StreamRequest` items, participants **MUST** include a `slimrpc-context-map` metadata entry as defined in [Section 8.4 of the Multicast RPC spec](slimrpc-multicast.md#84-task-management). The SLIMRPC transport rewrites the `contextId` field of each outbound message to the destination agent's value from this map before delivery, so each agent always sees its own `contextId` transparently. The `slim-peer-task-id` metadata key (see [Section 6](#6-message-attribution)) allows subsequent events to be attributed to the correct per-agent task.
+On all subsequent `StreamRequest` items, participants **MUST** include a `slimrpc-context-map` metadata entry as defined in [Section 8.3 of the Multicast RPC spec](slimrpc-multicast.md#83-task-management). The SLIMRPC transport rewrites the `contextId` field of each outbound message to the destination agent's value from this map before delivery, so each agent always sees its own `contextId` transparently. The `slim-peer-task-id` metadata key (see [Section 6](#6-message-attribution)) allows subsequent events to be attributed to the correct per-agent task.
 
 ### 4.2. The Group Chat Model
 

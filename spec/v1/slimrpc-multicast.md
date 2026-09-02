@@ -116,9 +116,9 @@ SLIM identifies the sender of each message received on the group channel, allowi
 
 ### 8.1. Overview
 
-`SendLiveMessage` is the bidirectional streaming method introduced in A2A 1.1. In the multicast (fan-out) mode, a client sends a single `SendLiveMessage` to a SLIM group channel and establishes N independent duplex streams — one with each participating agent — over that channel.
+`SendLiveMessage` is the bidirectional streaming method introduced in A2A 1.1. A client sends a single `SendLiveMessage` to a SLIM group channel and establishes N independent duplex streams — one with each participating agent — over that channel. Each agent's response stream is delivered only to the initiating client; agents are unaware of one another's output.
 
-This section covers the **fan-out** routing mode in which each agent's response stream is delivered only to the initiating client. For the **broadcast** routing mode in which all messages are delivered to all channel members, see the [SLIMRPC Broadcast Live Messaging specification](slimrpc-broadcast-live.md).
+For a many-to-many mode in which all messages are delivered to all channel members, see the [SLIMRPC Broadcast Live Messaging specification](slimrpc-broadcast-live.md).
 
 **Requirements:**
 
@@ -126,25 +126,14 @@ This section covers the **fan-out** routing mode in which each agent's response 
 - All participants **MUST** support the base SLIMRPC binding (`https://a2a-protocol.org/bindings/experimental-slimrpc/v1`)
 - The client **MUST** declare `A2A-Version: 1.1` (or later) in SLIMRPC metadata on the `SendLiveMessage` call
 
-### 8.2. Routing Mode Signal
-
-The routing mode is signalled by the `slimrpc-live-routing` metadata key on the `SendLiveMessage` call:
-
-| Value | Routing Mode |
-| :--- | :--- |
-| `fanout` (default) | N independent streams; each agent's responses delivered to initiator only |
-| `broadcast` | All messages delivered to all channel members (see [slimrpc-broadcast-live.md](slimrpc-broadcast-live.md)) |
-
-When `slimrpc-live-routing` is absent, `fanout` is assumed.
-
-### 8.3. Fan-out Stream Model
+### 8.2. Stream Model
 
 The initiating client sends `StreamRequest` items on a single outbound stream to the SLIM group channel. SLIM delivers each `StreamRequest` to all agents in the channel. Each agent maintains its own independent inbound and outbound stream with the initiator:
 
 ```
 Client          Channel         Agent A         Agent B
   |               |               |               |
-  |-SendLiveMsg-->|               |               |  (slimrpc-live-routing: fanout)
+  |-SendLiveMsg-->|               |               |
   |               |-SendLiveMsg-->|               |
   |               |-SendLiveMsg------------------>|
   |               |               |               |
@@ -165,7 +154,7 @@ Client          Channel         Agent A         Agent B
 
 Agent responses are invisible to other agents. Agent A's `StreamResponse` items are delivered only to the initiating client; Agent B does not see them, and vice versa.
 
-### 8.4. Task Management
+### 8.3. Task Management
 
 Each agent creates its own `Task` in response to `SendLiveMessage` and assigns its own server-generated `contextId` per the A2A specification. Agent-generated `contextId` values are opaque to the client and are not required to be the same across agents (see [Section 3.4.1 of the A2A specification](https://a2a-protocol.org/v1.1.0/specification/#341-context-identifier-semantics)).
 
@@ -184,7 +173,7 @@ The SLIMRPC transport **MUST** rewrite the `contextId` field of each outbound me
 
 Task IDs are agent-specific. The client **MUST NOT** assume task IDs or `contextId` values are the same across agents.
 
-### 8.5. Response Collection
+### 8.4. Response Collection
 
 Response collection follows the same rules as multicast `SendStreamingMessage` (Section 7):
 
@@ -193,7 +182,7 @@ Response collection follows the same rules as multicast `SendStreamingMessage` (
 - A timeout **SHOULD** be applied to the overall session
 - The client **SHOULD** associate each `StreamResponse` with the originating agent's SLIM name (available from SLIM attribution)
 
-### 8.6. Stream Lifecycle
+### 8.5. Stream Lifecycle
 
 - The client **MAY** close its outbound stream to signal it will send no further `StreamRequest` items; this does not close the agents' response streams
 - Each agent closes its outbound stream independently when its task reaches a terminal state

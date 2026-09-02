@@ -75,8 +75,8 @@ All keys prefixed with `A2A-` are reserved for A2A service parameters. SLIMRPC r
 
 | Key | Values | Description |
 | :--- | :--- | :--- |
-| `slimrpc-live-routing` | `fanout` (default), `broadcast` | Controls multicast `SendLiveMessage` routing mode (see [slimrpc-multicast.md §8.2](slimrpc-multicast.md#82-routing-mode-signal)) |
-| `slimrpc-context-map` | JSON object string | Per-agent `contextId` map used by the SLIMRPC transport to rewrite `contextId` transparently before delivery to each agent (see [slimrpc-multicast.md §8.4](slimrpc-multicast.md#84-task-management)) |
+| `slimrpc-live-routing` | `broadcast` | Enables broadcast live messaging on a `SendLiveMessage` call; absent = standard multicast (see [slimrpc-broadcast-live.md §3](slimrpc-broadcast-live.md#3-protocol-requirements)) |
+| `slimrpc-context-map` | JSON object string | Per-agent `contextId` map used by the SLIMRPC transport to rewrite `contextId` transparently before delivery to each agent (see [slimrpc-multicast.md §8.3](slimrpc-multicast.md#83-task-management)) |
 | `slim-src` | SLIM name string | Sender's SLIM name, populated by the SLIMRPC runtime on translated broadcast items (see [slimrpc-broadcast-live.md §6](slimrpc-broadcast-live.md#6-message-attribution)) |
 | `slim-peer-task-id` | Task ID string | Task ID of the peer agent that produced a translated broadcast event |
 | `slim-peer-state` | `TaskState` string | Task state of the peer at the time of a translated `TaskStatusUpdateEvent` |
