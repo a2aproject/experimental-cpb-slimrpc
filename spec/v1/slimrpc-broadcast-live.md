@@ -91,9 +91,9 @@ The SLIMRPC runtime is responsible for translating `StreamResponse` items receiv
 | `TaskArtifactUpdateEvent` | `StreamRequest { artifact_update: artifact_update }` | `slim-src`, `slim-peer-task-id` |
 | `TaskMessageUpdateEvent` (client-message entry) | `StreamRequest { message: message }` | `slim-src`, `slim-peer-task-id` |
 
-The synthetic task-announcement `Message` for the initial `Task` response **MUST** carry `role: ROLE_AGENT` and **SHOULD** include the peer's task ID in its text or data part so that receiving agents can record it.
+The synthetic task-announcement `Message` for the initial `Task` response **MUST** carry `role: ROLE_USER` and **SHOULD** include the peer's task ID in its text or data part so that receiving agents can record it.
 
-The synthetic state-change `Message` for a `TaskStatusUpdateEvent` without `status.message` **MUST** carry `role: ROLE_AGENT` and **SHOULD** encode the new `TaskState` value so that receiving agents can track peer state without polling.
+The synthetic state-change `Message` for a `TaskStatusUpdateEvent` without `status.message` **MUST** carry `role: ROLE_USER` and **SHOULD** encode the new `TaskState` value so that receiving agents can track peer state without polling.
 
 ### 5.2. `contextId` Rewriting
 
