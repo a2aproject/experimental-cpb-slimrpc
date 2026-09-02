@@ -118,7 +118,7 @@ SLIM identifies the sender of each message received on the group channel, allowi
 
 `SendLiveMessage` is the bidirectional streaming method introduced in A2A 1.1. In the multicast (fan-out) mode, a client sends a single `SendLiveMessage` to a SLIM group channel and establishes N independent duplex streams — one with each participating agent — over that channel.
 
-This section covers the **fan-out** routing mode in which each agent's response stream is delivered only to the initiating client. For the **broadcast** routing mode in which all messages are delivered to all channel members, see the [SLIMRPC Broadcast Live Messaging specification](slimrpc-collaborative-channel.md).
+This section covers the **fan-out** routing mode in which each agent's response stream is delivered only to the initiating client. For the **broadcast** routing mode in which all messages are delivered to all channel members, see the [SLIMRPC Broadcast Live Messaging specification](slimrpc-broadcast-live.md).
 
 **Requirements:**
 
@@ -133,7 +133,7 @@ The routing mode is signalled by the `slimrpc-live-routing` metadata key on the 
 | Value | Routing Mode |
 | :--- | :--- |
 | `fanout` (default) | N independent streams; each agent's responses delivered to initiator only |
-| `broadcast` | All messages delivered to all channel members (see [slimrpc-collaborative-channel.md](slimrpc-collaborative-channel.md)) |
+| `broadcast` | All messages delivered to all channel members (see [slimrpc-broadcast-live.md](slimrpc-broadcast-live.md)) |
 
 When `slimrpc-live-routing` is absent, `fanout` is assumed.
 
