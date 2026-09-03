@@ -12,28 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Monitoring agent — receives an anomaly trigger and broadcasts a structured alert.
+"""Monitoring agent — receives an anomaly trigger and emits a structured alert.
 
-Role in the scenario:
-  When on_session_message() is called with a ChannelMessage, it checks the
-  message text for an ANOMALY keyword and broadcasts a formatted ALERT to every
-  registered output channel so all session participants see a consistent signal.
+When SendLiveMessage delivers an ANOMALY message via the input_queue, this
+agent publishes an ALERT status update. The BroadcastLiveClient forwards that
+update to all other agents as a StreamRequest so they can react.
 """
 
 import asyncio
 
-from a2a.types.a2a_pb2 import AgentSkill
+from a2a.helpers.proto_helpers import new_task_from_user_message
+from a2a.server.agent_execution import AgentExecutor, AgentInputQueue, RequestContext
+from a2a.server.agent_execution.agent_input_queue import QueueShutDown
+from a2a.server.events import EventQueue
+from a2a.server.tasks import TaskUpdater
+from a2a.types.a2a_pb2 import AgentSkill, TaskState
 
 from agents.base import (
     NAMESPACE,
     GROUP,
-    AgentSession,
-    ChannelMessage,
-    SessionAwareAgentExecutor,
     get_message_text,
     get_slim_src,
     make_agent_card,
-    make_message,
+    make_agent_message,
     start_agent,
 )
 
@@ -41,27 +42,49 @@ SLIM_NAME = "monitoring-agent"
 FULL_SLIM_NAME = f"{NAMESPACE}/{GROUP}/{SLIM_NAME}"
 
 
-class MonitoringAgentExecutor(SessionAwareAgentExecutor):
-    async def on_session_message(
+class MonitoringAgentExecutor(AgentExecutor):
+    async def execute(
         self,
-        session: AgentSession,
-        incoming: ChannelMessage,
+        context: RequestContext,
+        event_queue: EventQueue,
+        input_queue: AgentInputQueue,
     ) -> None:
-        sender = get_slim_src(incoming.message)
-        text = get_message_text(incoming.message)
+        task = None
+        updater = None
+        try:
+            while True:
+                msg_ctx = await input_queue.get()
+                if not msg_ctx.message:
+                    continue
 
-        # Re-broadcast anomaly trigger as a structured alert to all channels.
-        if "ANOMALY" in text.upper():
-            print(f"[{SLIM_NAME}] received trigger from {sender}: {text!r}")
-            alert = (
-                f"ALERT: Error rate spike detected on /api/checkout — "
-                f"45% (threshold: 5%). Timestamp: 2024-01-15T10:23:00Z. "
-                f"Requesting log analysis and diagnostics."
-            )
-            print(f"[{SLIM_NAME}] broadcasting: {alert!r}")
-            msg = make_message(alert, FULL_SLIM_NAME)
-            for channel in session.channels.values():
-                await channel.send(msg)
+                if task is None:
+                    task = new_task_from_user_message(msg_ctx.message)
+                    await event_queue.enqueue_event(task)
+                    updater = TaskUpdater(event_queue, task.id, task.context_id)
+
+                sender = get_slim_src(msg_ctx.message)
+                text = get_message_text(msg_ctx.message)
+
+                if "ANOMALY" in text.upper():
+                    print(f"[{SLIM_NAME}] received trigger from {sender}: {text!r}")
+                    alert = (
+                        "ALERT: Error rate spike detected on /api/checkout — "
+                        "45% (threshold: 5%). Timestamp: 2024-01-15T10:23:00Z. "
+                        "Requesting log analysis and diagnostics."
+                    )
+                    print(f"[{SLIM_NAME}] broadcasting: {alert!r}")
+                    await updater.update_status(
+                        state=TaskState.TASK_STATE_WORKING,
+                        message=make_agent_message(alert, FULL_SLIM_NAME, task.context_id, task.id),
+                    )
+        except QueueShutDown:
+            pass
+        finally:
+            if updater:
+                await updater.complete()
+
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        pass
 
 
 def build_agent_card():
@@ -69,7 +92,7 @@ def build_agent_card():
         name="Monitoring Agent",
         description=(
             "Detects anomalies in service metrics and broadcasts structured alerts "
-            "to the collaborative incident-response channel."
+            "to the broadcast live incident-response session."
         ),
         slim_name=FULL_SLIM_NAME,
         skills=[

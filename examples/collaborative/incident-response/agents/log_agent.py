@@ -14,33 +14,33 @@
 
 """Log agent — surfaces relevant log entries when an alert is broadcast.
 
-Role in the scenario:
-  When on_session_message() is called with a ChannelMessage containing an ALERT,
-  it streams simulated log entries from the checkout service to all registered
-  channels. The diagnostics agent uses these log entries to form a hypothesis.
+When the input_queue delivers an ALERT message (forwarded from the monitoring
+agent by BroadcastLiveClient), this agent streams simulated log lines as
+working-state status updates. Each update is broadcast to all other agents.
 """
 
 import asyncio
 
-from a2a.types.a2a_pb2 import AgentSkill
+from a2a.helpers.proto_helpers import new_task_from_user_message
+from a2a.server.agent_execution import AgentExecutor, AgentInputQueue, RequestContext
+from a2a.server.agent_execution.agent_input_queue import QueueShutDown
+from a2a.server.events import EventQueue
+from a2a.server.tasks import TaskUpdater
+from a2a.types.a2a_pb2 import AgentSkill, TaskState
 
 from agents.base import (
     NAMESPACE,
     GROUP,
-    AgentSession,
-    ChannelMessage,
-    SessionAwareAgentExecutor,
     get_message_text,
     get_slim_src,
     make_agent_card,
-    make_message,
+    make_agent_message,
     start_agent,
 )
 
 SLIM_NAME = "log-agent"
 FULL_SLIM_NAME = f"{NAMESPACE}/{GROUP}/{SLIM_NAME}"
 
-# Simulated log lines from the checkout service around the incident window.
 SIMULATED_LOGS = [
     "2024-01-15T10:23:01Z ERROR checkout: dial tcp db.prod:5432: connection refused",
     "2024-01-15T10:23:02Z ERROR checkout: dial tcp db.prod:5432: connection refused (x47 in 1s)",
@@ -50,24 +50,48 @@ SIMULATED_LOGS = [
 ]
 
 
-class LogAgentExecutor(SessionAwareAgentExecutor):
-    async def on_session_message(
+class LogAgentExecutor(AgentExecutor):
+    async def execute(
         self,
-        session: AgentSession,
-        incoming: ChannelMessage,
+        context: RequestContext,
+        event_queue: EventQueue,
+        input_queue: AgentInputQueue,
     ) -> None:
-        sender = get_slim_src(incoming.message)
-        text = get_message_text(incoming.message)
+        task = None
+        updater = None
+        logs_sent = False
+        try:
+            while True:
+                msg_ctx = await input_queue.get()
+                if not msg_ctx.message:
+                    continue
 
-        # Respond to an alert from any sender (except ourselves) with log entries.
-        if "ALERT" in text.upper() and sender != FULL_SLIM_NAME:
-            print(f"[{SLIM_NAME}] received alert from {sender}, streaming logs...")
-            for log_line in SIMULATED_LOGS:
-                log_msg = f"LOG: {log_line}"
-                print(f"[{SLIM_NAME}] sending: {log_msg!r}")
-                msg = make_message(log_msg, FULL_SLIM_NAME)
-                for channel in session.channels.values():
-                    await channel.send(msg)
+                if task is None:
+                    task = new_task_from_user_message(msg_ctx.message)
+                    await event_queue.enqueue_event(task)
+                    updater = TaskUpdater(event_queue, task.id, task.context_id)
+
+                sender = get_slim_src(msg_ctx.message)
+                text = get_message_text(msg_ctx.message)
+
+                if not logs_sent and "ALERT" in text.upper() and sender != FULL_SLIM_NAME:
+                    logs_sent = True
+                    print(f"[{SLIM_NAME}] received alert from {sender}, streaming logs...")
+                    for log_line in SIMULATED_LOGS:
+                        log_msg = f"LOG: {log_line}"
+                        print(f"[{SLIM_NAME}] sending: {log_msg!r}")
+                        await updater.update_status(
+                            state=TaskState.TASK_STATE_WORKING,
+                            message=make_agent_message(log_msg, FULL_SLIM_NAME, task.context_id, task.id),
+                        )
+        except QueueShutDown:
+            pass
+        finally:
+            if updater:
+                await updater.complete()
+
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        pass
 
 
 def build_agent_card():
@@ -75,7 +99,7 @@ def build_agent_card():
         name="Log Agent",
         description=(
             "Surfaces relevant log entries from service logs in response to an "
-            "incident alert. Log entries are streamed to the collaborative channel "
+            "incident alert. Log entries are streamed to the broadcast live session "
             "for analysis by other participants."
         ),
         slim_name=FULL_SLIM_NAME,

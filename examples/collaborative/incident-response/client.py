@@ -12,43 +12,37 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Incident-response client.
+"""Incident-response broadcast live session client.
 
-Creates a SLIM group channel, invites all four agents, initiates a Collaborate
-session with a stable context_id (passed as SLIM RPC metadata), and sends an
-anomaly trigger. Prints every message received from any channel member, with
-slim-src attribution.
+Connects to each of the four agents over point-to-point SLIM channels,
+initiates a SendLiveMessage broadcast session via BroadcastLiveClient,
+and prints every (agent, event) tuple received during the session.
 
-The context_id is forwarded to every agent via SLIM metadata under the key
-"context-id". Agents use it to look up (or create) a shared AgentSession, so
-a future SendMessage call with the same context_id would join the same session
-and see the same history.
+The BroadcastLiveClient implements application-layer broadcast routing:
+each agent's StreamResponse items are forwarded as StreamRequest items to
+all other agents, so every participant sees the full conversation.
 """
 
 import asyncio
 import sys
 import uuid
-from datetime import timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 import slim_bindings
-from a2a.types.a2a_pb2 import Message, Part, ROLE_USER
+from a2a.types.a2a_pb2 import Message, Part, ROLE_USER, StreamRequest
 
 from agents.base import (
     NAMESPACE,
     GROUP,
     SLIM_URL,
     SLIM_SECRET,
-    CONTEXT_ID_METADATA_KEY,
     get_message_text,
-    get_slim_src,
 )
-from generated.slimrpc_collaborative_channel_pb2_slimrpc import (
-    CollaborativeChannelServiceGroupStub,
-)
+from broadcast_transport import BroadcastLiveClient
 from slima2a import setup_slim_client
+from slima2a.client_transport import SRPCTransport
 
 CLIENT_NAME = "client"
 
@@ -59,20 +53,29 @@ AGENT_NAMES = [
     "remediation-agent",
 ]
 
-CHANNEL_NAME = "incident-response-channel"
 
-
-def make_user_message(text: str) -> Message:
-    return Message(
+def _make_initial_request(text: str) -> StreamRequest:
+    msg = Message(
         message_id=str(uuid.uuid4()),
         role=ROLE_USER,
         parts=[Part(text=text)],
     )
+    return StreamRequest(message=msg)
 
 
-async def main():
-    # Connect to SLIM as the client.
-    _service, local_app, local_name, conn_id = await setup_slim_client(
+def _channel_factory(local_app: slim_bindings.App, conn_id: int):
+    def factory(remote: str) -> slim_bindings.Channel:
+        parts = remote.split("/")
+        return slim_bindings.Channel.new_with_connection(
+            local_app,
+            slim_bindings.Name(parts[0], parts[1], parts[2]),
+            conn_id,
+        )
+    return factory
+
+
+async def main() -> None:
+    _service, local_app, _local_name, conn_id = await setup_slim_client(
         namespace=NAMESPACE,
         group=GROUP,
         name=CLIENT_NAME,
@@ -80,52 +83,51 @@ async def main():
         secret=SLIM_SECRET,
     )
 
-    # Build the list of server SLIM Names (one per agent).
-    server_names = [
-        slim_bindings.Name(NAMESPACE, GROUP, agent_name)
-        for agent_name in AGENT_NAMES
-    ]
+    factory = _channel_factory(local_app, conn_id)
 
-    # Create a SLIM group channel that includes all four agents.
-    # The channel broadcasts every message to all members.
-    channel = slim_bindings.Channel.new_group_with_connection(
-        local_app, server_names, conn_id
-    )
+    agents = []
+    for agent_name in AGENT_NAMES:
+        slim_name = f"{NAMESPACE}/{GROUP}/{agent_name}"
+        channel = factory(slim_name)
+        transport = SRPCTransport(channel=channel, agent_card=None)
+        agents.append((slim_name, transport))
 
-    stub = CollaborativeChannelServiceGroupStub(channel)
+    broadcast_client = BroadcastLiveClient(agents)
 
-    # Prepare the initial anomaly trigger.
-    initial_trigger = (
+    trigger = (
         "ANOMALY DETECTED: /api/checkout error rate 45% (threshold: 5%). "
         "Duration: 90s. Affected region: us-east-1."
     )
+    print(f"\n--- Broadcast Live Session ---\n")
+    print(f"[client] sending: {trigger!r}\n")
 
-    async def messages():
-        print(f"[{CLIENT_NAME}] sending: {initial_trigger!r}")
-        yield make_user_message(initial_trigger)
-        # Keep the send side open so agents can exchange messages freely.
-        # The session ends when all agents close their streams (EOS).
-        await asyncio.sleep(10)
+    initial_request = _make_initial_request(trigger)
 
-    # Generate a stable context_id for this incident session.
-    # All agents will use this to look up the shared AgentSession, so a future
-    # SendMessage call with the same context_id joins the same history.
-    context_id = str(uuid.uuid4())
-    print(f"\n--- Incident Response Collaborate Session (context_id={context_id}) ---\n")
+    async for slim_name, response in broadcast_client.send_live_message(
+        initial_request,
+        metadata={"slimrpc-live-routing": "broadcast"},
+    ):
+        if response.HasField("task"):
+            task = response.task
+            print(f"[{slim_name}] task={task.id!r} context={task.context_id!r}")
+        elif response.HasField("status_update"):
+            update = response.status_update
+            msg_text = get_message_text(update.status.message) if update.status.HasField("message") else ""
+            state = update.status.state
+            from a2a.types.a2a_pb2 import TaskState
+            state_name = TaskState.Name(state).removeprefix("TASK_STATE_").lower()
+            if msg_text:
+                print(f"[{slim_name}] [{state_name}] {msg_text}")
+            else:
+                print(f"[{slim_name}] state={state_name}")
+        elif response.HasField("message_update"):
+            update = response.message_update
+            text = get_message_text(update.message)
+            print(f"[{slim_name}] {text}")
+        elif response.HasField("artifact_update"):
+            print(f"[{slim_name}] artifact update")
 
-    try:
-        async for ctx, msg in stub.Collaborate(
-            messages(),
-            timeout=timedelta(seconds=15),
-            metadata={CONTEXT_ID_METADATA_KEY: context_id},
-        ):
-            sender = get_slim_src(msg)
-            text = get_message_text(msg)
-            print(f"[{sender}] {text}")
-    finally:
-        await channel.close_async(timeout=None)
-
-    print(f"\n--- Session complete (context_id={context_id}) ---")
+    print(f"\n--- Session complete ---")
 
 
 if __name__ == "__main__":

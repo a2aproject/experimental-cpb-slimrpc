@@ -7,7 +7,7 @@
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
 #
-# Run the incident-response collaborative channel example.
+# Run the incident-response broadcast live messaging example.
 #
 # Prerequisites:
 #   1. A SLIM router must be running on localhost:46357.
@@ -17,17 +17,13 @@
 #   2. Python dependencies must be installed:
 #      uv sync
 #
-#   3. (Optional) Regenerate protobuf stubs from proto/v1/:
-#      buf dep update ../../proto/v1 && buf generate
-#      The committed generated/ files are already functional.
-#
 # Usage:
 #   ./run.sh
 #
 # Output:
 #   Each agent prints its received messages and responses to stdout, prefixed
-#   with the agent name. The client prints the final session transcript with
-#   slim-src attribution for each message.
+#   with the agent name. The client prints the full session transcript with
+#   slim-src attribution for each event.
 
 set -euo pipefail
 

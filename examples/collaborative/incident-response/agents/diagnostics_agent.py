@@ -14,37 +14,33 @@
 
 """Diagnostics agent — correlates log entries to identify the root cause.
 
-Role in the scenario:
-  When on_session_message() is called with a ChannelMessage containing a LOG
-  entry from the log agent, it accumulates evidence and broadcasts a DIAGNOSIS
-  message to all channels once the confidence threshold is crossed.
-
-  Diagnostic state (evidence, confidence, diagnosis_sent) is stored in
-  session.agent_state["diagnostics"] so it persists for the lifetime of the
-  AgentSession and is shared across all active channels for that context_id.
+When the input_queue delivers LOG messages (forwarded from the log agent by
+BroadcastLiveClient), this agent accumulates evidence and emits a DIAGNOSIS
+status update once the confidence threshold is crossed.
 """
 
 import asyncio
 
-from a2a.types.a2a_pb2 import AgentSkill
+from a2a.helpers.proto_helpers import new_task_from_user_message
+from a2a.server.agent_execution import AgentExecutor, AgentInputQueue, RequestContext
+from a2a.server.agent_execution.agent_input_queue import QueueShutDown
+from a2a.server.events import EventQueue
+from a2a.server.tasks import TaskUpdater
+from a2a.types.a2a_pb2 import AgentSkill, TaskState
 
 from agents.base import (
     NAMESPACE,
     GROUP,
-    AgentSession,
-    ChannelMessage,
-    SessionAwareAgentExecutor,
     get_message_text,
     get_slim_src,
     make_agent_card,
-    make_message,
+    make_agent_message,
     start_agent,
 )
 
 SLIM_NAME = "diagnostics-agent"
 FULL_SLIM_NAME = f"{NAMESPACE}/{GROUP}/{SLIM_NAME}"
 
-# Diagnostic signals: keyword → (evidence_weight, description)
 EVIDENCE_SIGNALS: list[tuple[str, float, str]] = [
     ("connection refused", 0.4, "DB connections being refused"),
     ("connection pool exhausted", 0.3, "DB connection pool is full"),
@@ -54,48 +50,65 @@ EVIDENCE_SIGNALS: list[tuple[str, float, str]] = [
 CONFIDENCE_THRESHOLD = 0.7
 
 
-class DiagnosticsAgentExecutor(SessionAwareAgentExecutor):
-    async def on_session_message(
+class DiagnosticsAgentExecutor(AgentExecutor):
+    async def execute(
         self,
-        session: AgentSession,
-        incoming: ChannelMessage,
+        context: RequestContext,
+        event_queue: EventQueue,
+        input_queue: AgentInputQueue,
     ) -> None:
-        sender = get_slim_src(incoming.message)
-        text = get_message_text(incoming.message)
+        task = None
+        updater = None
+        evidence: list[str] = []
+        confidence = 0.0
+        diagnosis_sent = False
+        try:
+            while True:
+                msg_ctx = await input_queue.get()
+                if not msg_ctx.message:
+                    continue
 
-        # Only process LOG entries from the log agent.
-        if not text.startswith("LOG:") or sender != f"{NAMESPACE}/{GROUP}/log-agent":
-            return
+                if task is None:
+                    task = new_task_from_user_message(msg_ctx.message)
+                    await event_queue.enqueue_event(task)
+                    updater = TaskUpdater(event_queue, task.id, task.context_id)
 
-        # Get or create per-session diagnostics state.
-        state = session.agent_state.setdefault(
-            "diagnostics",
-            {"evidence": [], "confidence": 0.0, "diagnosis_sent": False},
-        )
+                sender = get_slim_src(msg_ctx.message)
+                text = get_message_text(msg_ctx.message)
 
-        log_line = text[4:].strip()
-        print(f"[{SLIM_NAME}] processing log from {sender}: {log_line!r}")
+                if not text.startswith("LOG:") or sender != f"{NAMESPACE}/{GROUP}/log-agent":
+                    continue
 
-        # Accumulate evidence.
-        for keyword, weight, evidence_desc in EVIDENCE_SIGNALS:
-            if keyword.lower() in log_line.lower():
-                state["evidence"].append(evidence_desc)
-                state["confidence"] = min(1.0, state["confidence"] + weight)
+                log_line = text[4:].strip()
+                print(f"[{SLIM_NAME}] processing log from {sender}: {log_line!r}")
 
-        # Broadcast a diagnosis once we cross the confidence threshold.
-        if state["confidence"] >= CONFIDENCE_THRESHOLD and not state["diagnosis_sent"]:
-            state["diagnosis_sent"] = True
-            evidence_summary = "; ".join(dict.fromkeys(state["evidence"]))
-            diagnosis = (
-                f"DIAGNOSIS (confidence: {state['confidence']:.1f}): "
-                f"DB connection pool exhausted on checkout service — "
-                f"db.prod is not accepting new connections. "
-                f"Evidence: {evidence_summary}."
-            )
-            print(f"[{SLIM_NAME}] sending: {diagnosis!r}")
-            msg = make_message(diagnosis, FULL_SLIM_NAME)
-            for channel in session.channels.values():
-                await channel.send(msg)
+                for keyword, weight, evidence_desc in EVIDENCE_SIGNALS:
+                    if keyword.lower() in log_line.lower():
+                        evidence.append(evidence_desc)
+                        confidence = min(1.0, confidence + weight)
+
+                if confidence >= CONFIDENCE_THRESHOLD and not diagnosis_sent:
+                    diagnosis_sent = True
+                    evidence_summary = "; ".join(dict.fromkeys(evidence))
+                    diagnosis = (
+                        f"DIAGNOSIS (confidence: {confidence:.1f}): "
+                        f"DB connection pool exhausted on checkout service — "
+                        f"db.prod is not accepting new connections. "
+                        f"Evidence: {evidence_summary}."
+                    )
+                    print(f"[{SLIM_NAME}] sending: {diagnosis!r}")
+                    await updater.update_status(
+                        state=TaskState.TASK_STATE_WORKING,
+                        message=make_agent_message(diagnosis, FULL_SLIM_NAME, task.context_id, task.id),
+                    )
+        except QueueShutDown:
+            pass
+        finally:
+            if updater:
+                await updater.complete()
+
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        pass
 
 
 def build_agent_card():
@@ -104,7 +117,7 @@ def build_agent_card():
         description=(
             "Correlates log entries to identify the root cause of a service incident. "
             "Posts a diagnosis with a confidence score once sufficient evidence has "
-            "been gathered from the collaborative channel."
+            "been gathered from the broadcast live session."
         ),
         slim_name=FULL_SLIM_NAME,
         skills=[

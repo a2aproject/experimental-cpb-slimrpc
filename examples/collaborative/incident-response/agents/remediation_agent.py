@@ -14,79 +14,106 @@
 
 """Remediation agent — proposes a fix once the diagnostics agent is confident.
 
-Role in the scenario:
-  When on_session_message() is called with a ChannelMessage, it checks whether
-  the message is a confident DIAGNOSIS from the diagnostics agent and, if so,
-  broadcasts a REMEDIATION action to all registered channels.
+When the input_queue delivers a DIAGNOSIS message (forwarded from the
+diagnostics agent by BroadcastLiveClient), this agent emits a REMEDIATION
+status update with actionable steps.
 """
 
 import asyncio
 import re
 
-from a2a.types.a2a_pb2 import AgentSkill
+from a2a.helpers.proto_helpers import new_task_from_user_message
+from a2a.server.agent_execution import AgentExecutor, AgentInputQueue, RequestContext
+from a2a.server.agent_execution.agent_input_queue import QueueShutDown
+from a2a.server.events import EventQueue
+from a2a.server.tasks import TaskUpdater
+from a2a.types.a2a_pb2 import AgentSkill, TaskState
 
 from agents.base import (
     NAMESPACE,
     GROUP,
-    AgentSession,
-    ChannelMessage,
-    SessionAwareAgentExecutor,
     get_message_text,
     get_slim_src,
     make_agent_card,
-    make_message,
+    make_agent_message,
     start_agent,
 )
 
 SLIM_NAME = "remediation-agent"
 FULL_SLIM_NAME = f"{NAMESPACE}/{GROUP}/{SLIM_NAME}"
 
-# Only act on diagnoses with at least this confidence.
 MIN_CONFIDENCE = 0.7
 
 _CONFIDENCE_RE = re.compile(r"confidence:\s*([0-9.]+)", re.IGNORECASE)
 
 
-class RemediationAgentExecutor(SessionAwareAgentExecutor):
-    async def on_session_message(
+class RemediationAgentExecutor(AgentExecutor):
+    async def execute(
         self,
-        session: AgentSession,
-        incoming: ChannelMessage,
+        context: RequestContext,
+        event_queue: EventQueue,
+        input_queue: AgentInputQueue,
     ) -> None:
-        sender = get_slim_src(incoming.message)
-        text = get_message_text(incoming.message)
+        task = None
+        updater = None
+        remediation_sent = False
+        try:
+            while True:
+                msg_ctx = await input_queue.get()
+                if not msg_ctx.message:
+                    continue
 
-        # Only act on DIAGNOSIS messages from the diagnostics agent.
-        if (
-            not text.startswith("DIAGNOSIS")
-            or sender != f"{NAMESPACE}/{GROUP}/diagnostics-agent"
-        ):
-            return
+                if task is None:
+                    task = new_task_from_user_message(msg_ctx.message)
+                    await event_queue.enqueue_event(task)
+                    updater = TaskUpdater(event_queue, task.id, task.context_id)
 
-        match = _CONFIDENCE_RE.search(text)
-        confidence = float(match.group(1)) if match else 0.0
+                if remediation_sent:
+                    continue
 
-        if confidence < MIN_CONFIDENCE:
-            print(
-                f"[{SLIM_NAME}] diagnosis confidence {confidence:.1f} < "
-                f"{MIN_CONFIDENCE} — waiting for more evidence"
-            )
-            return
+                sender = get_slim_src(msg_ctx.message)
+                text = get_message_text(msg_ctx.message)
 
-        print(f"[{SLIM_NAME}] acting on diagnosis from {sender}: {text!r}")
-        remediation = (
-            f"REMEDIATION: DB connection pool exhausted on checkout service. "
-            f"Immediate actions: "
-            f"(1) Restart checkout-db-pool: `systemctl restart checkout-db-pool`. "
-            f"(2) Increase max_connections on db.prod from 100 → 200 "
-            f"(edit /etc/postgresql/postgresql.conf, then reload). "
-            f"Expected recovery time: ~30s after step 1. "
-            f"Post-incident: add connection-pool alerting at 80% utilisation."
-        )
-        print(f"[{SLIM_NAME}] sending: {remediation!r}")
-        msg = make_message(remediation, FULL_SLIM_NAME)
-        for channel in session.channels.values():
-            await channel.send(msg)
+                if (
+                    not text.startswith("DIAGNOSIS")
+                    or sender != f"{NAMESPACE}/{GROUP}/diagnostics-agent"
+                ):
+                    continue
+
+                match = _CONFIDENCE_RE.search(text)
+                confidence = float(match.group(1)) if match else 0.0
+
+                if confidence < MIN_CONFIDENCE:
+                    print(
+                        f"[{SLIM_NAME}] diagnosis confidence {confidence:.1f} < "
+                        f"{MIN_CONFIDENCE} — waiting for more evidence"
+                    )
+                    continue
+
+                remediation_sent = True
+                print(f"[{SLIM_NAME}] acting on diagnosis from {sender}: {text!r}")
+                remediation = (
+                    "REMEDIATION: DB connection pool exhausted on checkout service. "
+                    "Immediate actions: "
+                    "(1) Restart checkout-db-pool: `systemctl restart checkout-db-pool`. "
+                    "(2) Increase max_connections on db.prod from 100 → 200 "
+                    "(edit /etc/postgresql/postgresql.conf, then reload). "
+                    "Expected recovery time: ~30s after step 1. "
+                    "Post-incident: add connection-pool alerting at 80% utilisation."
+                )
+                print(f"[{SLIM_NAME}] sending: {remediation!r}")
+                await updater.update_status(
+                    state=TaskState.TASK_STATE_WORKING,
+                    message=make_agent_message(remediation, FULL_SLIM_NAME, task.context_id, task.id),
+                )
+        except QueueShutDown:
+            pass
+        finally:
+            if updater:
+                await updater.complete()
+
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        pass
 
 
 def build_agent_card():
