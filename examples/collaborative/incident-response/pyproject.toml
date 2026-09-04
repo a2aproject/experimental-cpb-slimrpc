@@ -1,0 +1,14 @@
+[project]
+name = "incident-response"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "a2a-sdk",
+    "slima2a",
+    "httpx >= 0.28.1",
+    "packaging>=26.2",
+]
+
+[tool.uv.sources]
+a2a-sdk = { git = "https://github.com/Tehsmash/a2a-python", branch = "feat/send-live-message" }
+slima2a = { git = "https://github.com/agntcy/slim-a2a-python", branch = "feat/send-live-message" }

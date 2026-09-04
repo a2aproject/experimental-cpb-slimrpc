@@ -71,7 +71,15 @@ A2A service parameters defined in [Section 3.2.6 of the specification](https://a
 
 **Reserved Metadata Keys:**
 
-SLIMRPC does not reserve any metadata key names for its own use. All keys prefixed with `A2A-` are reserved for A2A service parameters.
+All keys prefixed with `A2A-` are reserved for A2A service parameters. SLIMRPC reserves the following keys for its own extensions:
+
+| Key | Values | Description |
+| :--- | :--- | :--- |
+| `slimrpc-live-routing` | `broadcast` | Enables broadcast live messaging on a `SendLiveMessage` call; absent = standard multicast (see [slimrpc-broadcast-live.md §3](slimrpc-broadcast-live.md#3-protocol-requirements)) |
+| `slimrpc-context-map` | JSON object string | Optional. Supplied once on the initial `SendLiveMessage` call to continue existing per-agent contexts; each agent's transport reads its own entry by SLIM name and injects it into all inbound `StreamRequest` items for the session. Absent = each agent caches its own `contextId` at task creation (see [slimrpc-multicast.md §8.3](slimrpc-multicast.md#83-task-management)) |
+| `slim-src` | SLIM name string | Sender's SLIM name, populated by the SLIMRPC runtime on translated broadcast items (see [slimrpc-broadcast-live.md §6](slimrpc-broadcast-live.md#6-message-attribution)) |
+| `slim-peer-task-id` | Task ID string | Task ID of the peer agent that produced a translated broadcast event |
+| `slim-peer-state` | `TaskState` string | Task state of the peer at the time of a translated `TaskStatusUpdateEvent` |
 
 **Example service parameters as SLIMRPC metadata:**
 
@@ -92,19 +100,20 @@ The SLIMRPC binding uses the **same Protocol Buffer message types** as the gRPC 
 
 The following table reflects the `A2AService` methods as defined in the current A2A proto (`specification/a2a.proto`). Implementations targeting an older version of A2A **MUST** use the method names, request types, and response types from the proto for that version.
 
-| Method Name                          | RPC Type     | Request Type                              | Response Type                                  | A2A Operation                   |
-| :----------------------------------- | :----------- | :---------------------------------------- | :--------------------------------------------- | :------------------------------ |
-| `SendMessage`                        | Unary        | `SendMessageRequest`                      | `SendMessageResponse`                          | Send Message                    |
-| `SendStreamingMessage`               | Unary-Stream | `SendMessageRequest`                      | `StreamResponse` (stream)                      | Stream Message                  |
-| `GetTask`                            | Unary        | `GetTaskRequest`                          | `Task`                                         | Get Task                        |
-| `ListTasks`                          | Unary        | `ListTasksRequest`                        | `ListTasksResponse`                            | List Tasks                      |
-| `CancelTask`                         | Unary        | `CancelTaskRequest`                       | `Task`                                         | Cancel Task                     |
-| `SubscribeToTask`                    | Unary-Stream | `SubscribeToTaskRequest`                  | `StreamResponse` (stream)                      | Subscribe to Task               |
-| `CreateTaskPushNotificationConfig`   | Unary        | `TaskPushNotificationConfig`              | `TaskPushNotificationConfig`                   | Create Push Notification Config |
-| `GetTaskPushNotificationConfig`      | Unary        | `GetTaskPushNotificationConfigRequest`    | `TaskPushNotificationConfig`                   | Get Push Notification Config    |
-| `ListTaskPushNotificationConfigs`    | Unary        | `ListTaskPushNotificationConfigsRequest`  | `ListTaskPushNotificationConfigsResponse`      | List Push Notification Configs  |
-| `DeleteTaskPushNotificationConfig`   | Unary        | `DeleteTaskPushNotificationConfigRequest` | `google.protobuf.Empty`                        | Delete Push Notification Config |
-| `GetExtendedAgentCard`               | Unary        | `GetExtendedAgentCardRequest`             | `AgentCard`                                    | Get Extended Agent Card         |
+| Method Name                          | RPC Type     | Request Type                              | Response Type                                  | A2A Version | A2A Operation                   |
+| :----------------------------------- | :----------- | :---------------------------------------- | :--------------------------------------------- | :---------- | :------------------------------ |
+| `SendMessage`                        | Unary        | `SendMessageRequest`                      | `SendMessageResponse`                          | 1.0+        | Send Message                    |
+| `SendStreamingMessage`               | Unary-Stream | `SendMessageRequest`                      | `StreamResponse` (stream)                      | 1.0+        | Stream Message                  |
+| `SendLiveMessage`                    | BiDi-Stream  | `StreamRequest` (stream)                  | `StreamResponse` (stream)                      | 1.1+        | Live Message (BiDi)             |
+| `GetTask`                            | Unary        | `GetTaskRequest`                          | `Task`                                         | 1.0+        | Get Task                        |
+| `ListTasks`                          | Unary        | `ListTasksRequest`                        | `ListTasksResponse`                            | 1.0+        | List Tasks                      |
+| `CancelTask`                         | Unary        | `CancelTaskRequest`                       | `Task`                                         | 1.0+        | Cancel Task                     |
+| `SubscribeToTask`                    | Unary-Stream | `SubscribeToTaskRequest`                  | `StreamResponse` (stream)                      | 1.0+        | Subscribe to Task               |
+| `CreateTaskPushNotificationConfig`   | Unary        | `TaskPushNotificationConfig`              | `TaskPushNotificationConfig`                   | 1.0+        | Create Push Notification Config |
+| `GetTaskPushNotificationConfig`      | Unary        | `GetTaskPushNotificationConfigRequest`    | `TaskPushNotificationConfig`                   | 1.0+        | Get Push Notification Config    |
+| `ListTaskPushNotificationConfigs`    | Unary        | `ListTaskPushNotificationConfigsRequest`  | `ListTaskPushNotificationConfigsResponse`      | 1.0+        | List Push Notification Configs  |
+| `DeleteTaskPushNotificationConfig`   | Unary        | `DeleteTaskPushNotificationConfigRequest` | `google.protobuf.Empty`                        | 1.0+        | Delete Push Notification Config |
+| `GetExtendedAgentCard`               | Unary        | `GetExtendedAgentCardRequest`             | `AgentCard`                                    | 1.0+        | Get Extended Agent Card         |
 
 ## 5. Core Methods
 
