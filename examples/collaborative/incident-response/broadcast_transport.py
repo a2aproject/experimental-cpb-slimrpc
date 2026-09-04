@@ -44,25 +44,29 @@ def _task_state_name(state: TaskState) -> str:
     return TaskState.Name(state).removeprefix("TASK_STATE_").lower()
 
 
-def _peer_message(text: str, slim_src: str, peer_task_id: str) -> StreamRequest:
-    """Build a synthetic ROLE_USER StreamRequest carrying a peer agent's message."""
-    msg = Message(
-        message_id=str(uuid.uuid4()),
-        role=ROLE_USER,
-        parts=[Part(text=text)],
-    )
-    msg.metadata.fields["slim-src"].string_value = slim_src
-    msg.metadata.fields["slim-peer-task-id"].string_value = peer_task_id
-    return StreamRequest(message=msg)
-
-
-def _peer_status_message(
-    text: str,
+def _forward_message(
+    msg: Message,
     slim_src: str,
     peer_task_id: str,
-    state: TaskState,
+    state: TaskState | None = None,
 ) -> StreamRequest:
-    """Build a synthetic ROLE_USER StreamRequest carrying a peer status update."""
+    """Translate a peer Message into a ROLE_USER StreamRequest, preserving all parts.
+
+    Stamps ROLE_USER and adds slim-src / slim-peer-task-id (/ slim-peer-state)
+    attribution metadata. Parts are passed through unchanged.
+    """
+    forwarded = Message()
+    forwarded.CopyFrom(msg)
+    forwarded.role = ROLE_USER
+    forwarded.metadata.fields["slim-src"].string_value = slim_src
+    forwarded.metadata.fields["slim-peer-task-id"].string_value = peer_task_id
+    if state is not None:
+        forwarded.metadata.fields["slim-peer-state"].string_value = _task_state_name(state)
+    return StreamRequest(message=forwarded)
+
+
+def _synthetic_message(text: str, slim_src: str, peer_task_id: str, state: TaskState | None = None) -> StreamRequest:
+    """Build a synthetic ROLE_USER StreamRequest for events that carry no Message."""
     msg = Message(
         message_id=str(uuid.uuid4()),
         role=ROLE_USER,
@@ -70,7 +74,8 @@ def _peer_status_message(
     )
     msg.metadata.fields["slim-src"].string_value = slim_src
     msg.metadata.fields["slim-peer-task-id"].string_value = peer_task_id
-    msg.metadata.fields["slim-peer-state"].string_value = _task_state_name(state)
+    if state is not None:
+        msg.metadata.fields["slim-peer-state"].string_value = _task_state_name(state)
     return StreamRequest(message=msg)
 
 
@@ -155,7 +160,7 @@ class BroadcastLiveClient:
                     if response.HasField("task"):
                         # Task announcement: inform peers of new task.
                         task = response.task
-                        forwarded = _peer_message(
+                        forwarded = _synthetic_message(
                             text=f"Agent {slim_name} started task {task.id}",
                             slim_src=slim_name,
                             peer_task_id=task.id,
@@ -164,16 +169,15 @@ class BroadcastLiveClient:
                     elif response.HasField("status_update"):
                         update = response.status_update
                         if update.status.HasField("message"):
-                            forwarded = _peer_status_message(
-                                text=_text_from_message(update.status.message),
+                            forwarded = _forward_message(
+                                msg=update.status.message,
                                 slim_src=slim_name,
                                 peer_task_id=peer_task_id,
                                 state=update.status.state,
                             )
                         else:
-                            state_name = _task_state_name(update.status.state)
-                            forwarded = _peer_status_message(
-                                text=f"Agent {slim_name} state: {state_name}",
+                            forwarded = _synthetic_message(
+                                text=f"Agent {slim_name} state: {_task_state_name(update.status.state)}",
                                 slim_src=slim_name,
                                 peer_task_id=peer_task_id,
                                 state=update.status.state,
@@ -181,8 +185,8 @@ class BroadcastLiveClient:
 
                     elif response.HasField("message_update"):
                         update = response.message_update
-                        forwarded = _peer_message(
-                            text=_text_from_message(update.message),
+                        forwarded = _forward_message(
+                            msg=update.message,
                             slim_src=slim_name,
                             peer_task_id=peer_task_id,
                         )
@@ -236,9 +240,3 @@ class BroadcastLiveClient:
                 await q.put(sentinel)
 
 
-def _text_from_message(msg: Message) -> str:
-    """Extract the first text content from a Message."""
-    for part in msg.parts:
-        if part.HasField("text"):
-            return part.text
-    return ""
