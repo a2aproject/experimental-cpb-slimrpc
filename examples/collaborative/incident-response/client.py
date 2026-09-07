@@ -46,6 +46,7 @@ from slima2a import setup_slim_client
 from slima2a.client_transport import SRPCTransport
 
 CLIENT_NAME = "client"
+CLIENT_SLIM_NAME = f"{NAMESPACE}/{GROUP}/{CLIENT_NAME}"
 
 AGENT_NAMES = [
     "monitoring-agent",
@@ -55,12 +56,13 @@ AGENT_NAMES = [
 ]
 
 
-def _make_initial_request(text: str) -> StreamRequest:
+def _make_request(text: str) -> StreamRequest:
     msg = Message(
         message_id=str(uuid.uuid4()),
         role=ROLE_USER,
         parts=[Part(text=text)],
     )
+    msg.metadata.fields["slim-src"].string_value = CLIENT_SLIM_NAME
     return StreamRequest(message=msg)
 
 
@@ -109,7 +111,7 @@ async def main() -> None:
     send_queue: asyncio.Queue[StreamRequest | None] = asyncio.Queue()
 
     async def requests():
-        yield _make_initial_request(trigger)
+        yield _make_request(trigger)
         while True:
             item = await send_queue.get()
             if item is None:
@@ -151,7 +153,7 @@ async def main() -> None:
                 print()
                 log("client", f"sending approval: {approval!r}")
                 print()
-                await send_queue.put(_make_initial_request(approval))
+                await send_queue.put(_make_request(approval))
 
             # Close the session once the remediation agent confirms execution.
             if (
