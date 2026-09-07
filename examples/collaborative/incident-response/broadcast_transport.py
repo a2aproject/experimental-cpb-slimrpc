@@ -82,17 +82,27 @@ def _synthetic_message(text: str, slim_src: str, peer_task_id: str, state: TaskS
 class BroadcastLiveClient:
     """Application-layer broadcast routing over N SRPCTransport instances.
 
-    Opens one SendLiveMessage stream per agent and forwards each agent's
-    StreamResponse items as StreamRequest items to every other agent, producing
-    the group-chat semantics described in the SLIMRPC broadcast-live spec.
+    Opens one SendLiveMessage stream per agent and implements a bidirectional
+    broadcast session:
+    - Every StreamRequest from the caller is fanned out to all agents.
+    - Every StreamResponse from any agent is forwarded as a StreamRequest to
+      all other agents, producing the group-chat semantics in the spec.
+    - The caller can yield StreamRequest items asynchronously at any point
+      during the session; the streams stay open until the caller's generator
+      exhausts or the session is cancelled.
 
     Usage::
+
+        async def requests():
+            yield first_message
+            await asyncio.sleep(5)
+            yield follow_up_message  # sent while agents are still responding
 
         client = BroadcastLiveClient([
             ("mydomain/demo/agent-a", transport_a),
             ("mydomain/demo/agent-b", transport_b),
         ])
-        async for slim_name, response in client.send_live_message(initial_request):
+        async for slim_name, response in client.send_live_message(requests()):
             print(slim_name, response)
     """
 
@@ -101,32 +111,50 @@ class BroadcastLiveClient:
 
     async def send_live_message(
         self,
-        initial_request: StreamRequest,
+        request_stream: AsyncGenerator[StreamRequest, None],
         metadata: dict[str, str] | None = None,
     ) -> AsyncGenerator[tuple[str, StreamResponse], None]:
-        """Open N SendLiveMessage streams and broadcast peer responses.
+        """Open N SendLiveMessage streams and broadcast between client and agents.
 
         Yields (slim_name, StreamResponse) tuples from all agents as they arrive.
-        Each agent's responses are also forwarded as StreamRequest items to all
-        other agents so every participant sees the full conversation.
+
+        The caller drives the session via request_stream: items are fanned out
+        to every agent as they are yielded. When request_stream exhausts, the
+        send side of every agent stream is closed; agents will complete their
+        tasks and close their response streams naturally.
 
         Args:
-            initial_request: The first StreamRequest (must have message set).
-            metadata:         SLIMRPC call metadata (e.g. slimrpc-live-routing).
+            request_stream: Async generator of StreamRequest items from the caller.
+            metadata:        SLIMRPC call metadata (e.g. slimrpc-live-routing).
         """
-        # Per-agent queue for forwarded StreamRequest items from peers.
+        sentinel = object()
+
+        # Per-agent queue receives both client items (from fan_out_client) and
+        # peer-forwarded items (from read_agent tasks for other agents).
+        # Sentinel closes the send side — only fan_out_client sends it.
         queues: dict[str, asyncio.Queue] = {
             name: asyncio.Queue() for name, _ in self._agents
         }
 
-        # Merged output queue: (slim_name, StreamResponse)
+        # Merged output: (slim_name, StreamResponse) or None (agent done signal).
         output_queue: asyncio.Queue[tuple[str, StreamResponse] | None] = asyncio.Queue()
 
-        sentinel = object()
+        async def fan_out_client() -> None:
+            """Distribute every client StreamRequest to all agent queues.
+
+            When the client stream exhausts, puts sentinel into every agent
+            queue to close the send side of each SendLiveMessage stream.
+            """
+            try:
+                async for req in request_stream:
+                    for q in queues.values():
+                        await q.put(req)
+            finally:
+                for q in queues.values():
+                    await q.put(sentinel)
 
         async def agent_send_stream(slim_name: str) -> AsyncGenerator[StreamRequest, None]:
-            """Yield initial_request first, then forward items from peer queue."""
-            yield initial_request
+            """Yield items from this agent's queue until sentinel."""
             q = queues[slim_name]
             while True:
                 item = await q.get()
@@ -135,7 +163,7 @@ class BroadcastLiveClient:
                 yield item
 
         async def read_agent(slim_name: str, transport: SRPCTransport) -> None:
-            """Read one agent's stream, forward responses to peers, push to output."""
+            """Read one agent's response stream, forward to peers, push to output."""
             try:
                 async for response in transport.send_live_message(
                     agent_send_stream(slim_name),
@@ -154,11 +182,10 @@ class BroadcastLiveClient:
                     elif response.HasField("message_update"):
                         peer_task_id = response.message_update.task_id
 
-                    # Build forwarded StreamRequest for peers.
+                    # Build forwarded StreamRequest for all other agents.
                     forwarded: StreamRequest | None = None
 
                     if response.HasField("task"):
-                        # Task announcement: inform peers of new task.
                         task = response.task
                         forwarded = _synthetic_message(
                             text=f"Agent {slim_name} started task {task.id}",
@@ -192,12 +219,9 @@ class BroadcastLiveClient:
                         )
 
                     elif response.HasField("artifact_update"):
-                        # Forward artifact updates as StreamRequest artifact_update.
                         forwarded_artifact = StreamRequest(
                             artifact_update=response.artifact_update
                         )
-                        # Metadata not supported on StreamRequest.artifact_update;
-                        # send as-is to all other agents.
                         for other_name, _ in self._agents:
                             if other_name != slim_name:
                                 await queues[other_name].put(forwarded_artifact)
@@ -211,13 +235,12 @@ class BroadcastLiveClient:
             except Exception as exc:
                 print(f"[broadcast] agent {slim_name} stream error: {exc}")
             finally:
-                await output_queue.put(None)  # signal this agent is done
-                # Unblock any agents waiting on this sender's queue entry.
-                for other_name, _ in self._agents:
-                    if other_name != slim_name:
-                        await queues[other_name].put(sentinel)
+                # Signal output collector that this agent is done.
+                # Do NOT put sentinel into peer queues — their send streams are
+                # only closed by fan_out_client when the caller's stream exhausts.
+                await output_queue.put(None)
 
-        # Launch all agent reader tasks concurrently.
+        fan_out_task = asyncio.create_task(fan_out_client(), name="broadcast-fan-out")
         reader_tasks = [
             asyncio.create_task(read_agent(name, transport), name=f"broadcast-reader-{name}")
             for name, transport in self._agents
@@ -233,10 +256,9 @@ class BroadcastLiveClient:
                 else:
                     yield item
         finally:
+            fan_out_task.cancel()
             for task in reader_tasks:
                 task.cancel()
-            # Drain all queues so reader tasks can exit.
+            # Ensure agent send streams can unblock and exit.
             for q in queues.values():
                 await q.put(sentinel)
-
-

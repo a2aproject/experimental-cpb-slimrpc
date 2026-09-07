@@ -101,10 +101,14 @@ async def main() -> None:
     print(f"\n--- Broadcast Live Session ---\n")
     print(f"[client] sending: {trigger!r}\n")
 
-    initial_request = _make_initial_request(trigger)
+    async def requests():
+        yield _make_initial_request(trigger)
+        # Keep the send stream open so agents can continue exchanging messages.
+        # The session ends once all agents close their response streams.
+        await asyncio.Event().wait()
 
     async for slim_name, response in broadcast_client.send_live_message(
-        initial_request,
+        requests(),
         metadata={"slimrpc-live-routing": "broadcast"},
     ):
         if response.HasField("task"):
