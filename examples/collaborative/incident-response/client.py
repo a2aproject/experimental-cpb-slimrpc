@@ -62,7 +62,6 @@ def _make_request(text: str) -> StreamRequest:
         role=ROLE_USER,
         parts=[Part(text=text)],
     )
-    msg.metadata.fields["slim-src"].string_value = CLIENT_SLIM_NAME
     return StreamRequest(message=msg)
 
 
@@ -95,7 +94,7 @@ async def main() -> None:
         transport = SRPCTransport(channel=channel, agent_card=None)
         agents.append((slim_name, transport))
 
-    broadcast_client = BroadcastLiveClient(agents)
+    broadcast_client = BroadcastLiveClient(agents, source_slim_name=CLIENT_SLIM_NAME)
 
     from a2a.types.a2a_pb2 import TaskState
 

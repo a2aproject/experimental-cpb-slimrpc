@@ -106,8 +106,9 @@ class BroadcastLiveClient:
             print(slim_name, response)
     """
 
-    def __init__(self, agents: list[tuple[str, SRPCTransport]]) -> None:
+    def __init__(self, agents: list[tuple[str, SRPCTransport]], source_slim_name: str = "") -> None:
         self._agents = agents
+        self._source_slim_name = source_slim_name
 
     async def send_live_message(
         self,
@@ -142,11 +143,17 @@ class BroadcastLiveClient:
         async def fan_out_client() -> None:
             """Distribute every client StreamRequest to all agent queues.
 
+            Injects slim-src from source_slim_name into each item's message
+            metadata — mirroring what the real SLIM transport would do by
+            reading context.src() before passing items to the executor.
+
             When the client stream exhausts, puts sentinel into every agent
             queue to close the send side of each SendLiveMessage stream.
             """
             try:
                 async for req in request_stream:
+                    if self._source_slim_name and req.HasField("message"):
+                        req.message.metadata.fields["slim-src"].string_value = self._source_slim_name
                     for q in queues.values():
                         await q.put(req)
             finally:
