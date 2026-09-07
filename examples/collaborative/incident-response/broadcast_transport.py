@@ -233,7 +233,8 @@ class BroadcastLiveClient:
                                 await queues[other_name].put(forwarded)
 
             except Exception as exc:
-                print(f"[broadcast] agent {slim_name} stream error: {exc}")
+                short = slim_name.rsplit("/", 1)[-1]
+                print(f"\033[1;31m[broadcast:{short}]\033[0m stream error: {exc}")
             finally:
                 # Signal output collector that this agent is done.
                 # Do NOT put sentinel into peer queues — their send streams are

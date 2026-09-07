@@ -33,6 +33,7 @@ from agents.base import (
     GROUP,
     get_message_text,
     get_slim_src,
+    log,
     make_agent_card,
     make_agent_message,
     start_agent,
@@ -89,14 +90,14 @@ class DiagnosticsAgentExecutor(AgentExecutor):
 
                 if sender == log_agent and text.startswith("LOG:"):
                     line = text[4:].strip()
-                    print(f"[{SLIM_NAME}] log evidence from {sender}: {line!r}")
+                    log(SLIM_NAME, f"log evidence from {sender}: {line!r}")
                     for keyword, weight, evidence_desc in LOG_SIGNALS:
                         if keyword.lower() in line.lower():
                             evidence.append(evidence_desc)
                             confidence = min(1.0, confidence + weight)
 
                 elif sender == monitoring_agent and text.startswith("METRICS:"):
-                    print(f"[{SLIM_NAME}] metrics evidence from {sender}: {text!r}")
+                    log(SLIM_NAME, f"metrics evidence from {sender}: {text!r}")
                     for keyword, weight, evidence_desc in METRICS_SIGNALS:
                         if keyword.lower() in text.lower():
                             evidence.append(evidence_desc)
@@ -114,7 +115,7 @@ class DiagnosticsAgentExecutor(AgentExecutor):
                         f"db.prod is not accepting new connections. "
                         f"Evidence: {evidence_summary}."
                     )
-                    print(f"[{SLIM_NAME}] sending: {diagnosis!r}")
+                    log(SLIM_NAME, f"sending: {diagnosis!r}")
                     await updater.update_status(
                         state=TaskState.TASK_STATE_WORKING,
                         message=make_agent_message(diagnosis, FULL_SLIM_NAME, task.context_id, task.id),

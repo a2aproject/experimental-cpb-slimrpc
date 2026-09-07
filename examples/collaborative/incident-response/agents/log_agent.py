@@ -33,6 +33,7 @@ from agents.base import (
     GROUP,
     get_message_text,
     get_slim_src,
+    log,
     make_agent_card,
     make_agent_message,
     start_agent,
@@ -76,10 +77,10 @@ class LogAgentExecutor(AgentExecutor):
 
                 if not logs_sent and "ANOMALY" in text.upper() and sender != FULL_SLIM_NAME:
                     logs_sent = True
-                    print(f"[{SLIM_NAME}] received alert from {sender}, streaming logs...")
+                    log(SLIM_NAME, f"received anomaly trigger from {sender}, streaming logs...")
                     for log_line in SIMULATED_LOGS:
                         log_msg = f"LOG: {log_line}"
-                        print(f"[{SLIM_NAME}] sending: {log_msg!r}")
+                        log(SLIM_NAME, f"sending: {log_msg!r}")
                         await updater.update_status(
                             state=TaskState.TASK_STATE_WORKING,
                             message=make_agent_message(log_msg, FULL_SLIM_NAME, task.context_id, task.id),

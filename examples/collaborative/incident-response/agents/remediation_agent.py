@@ -34,6 +34,7 @@ from agents.base import (
     GROUP,
     get_message_text,
     get_slim_src,
+    log,
     make_agent_card,
     make_agent_message,
     start_agent,
@@ -92,7 +93,7 @@ class RemediationAgentExecutor(AgentExecutor):
 
                     remediation_sent = True
                     awaiting_approval = True
-                    print(f"[{SLIM_NAME}] acting on diagnosis from {sender}: {text!r}")
+                    log(SLIM_NAME, f"acting on diagnosis from {sender}: {text!r}")
                     plan = (
                         "REMEDIATION: DB connection pool exhausted on checkout service. "
                         "Proposed actions: "
@@ -103,7 +104,7 @@ class RemediationAgentExecutor(AgentExecutor):
                         "Post-incident: add connection-pool alerting at 80% utilisation. "
                         "Awaiting approval to execute."
                     )
-                    print(f"[{SLIM_NAME}] proposing plan: {plan!r}")
+                    log(SLIM_NAME, f"proposing plan: {plan!r}")
                     await updater.update_status(
                         state=TaskState.TASK_STATE_INPUT_REQUIRED,
                         message=make_agent_message(plan, FULL_SLIM_NAME, task.context_id, task.id),
@@ -115,14 +116,14 @@ class RemediationAgentExecutor(AgentExecutor):
                         continue
 
                     awaiting_approval = False
-                    print(f"[{SLIM_NAME}] approval received from {sender}, executing remediation")
+                    log(SLIM_NAME, f"approval received from {sender}, executing remediation")
                     execution = (
                         "REMEDIATION EXECUTED: "
                         "Restarted checkout-db-pool — pool accepting connections. "
                         "Updated max_connections to 200 on db.prod and reloaded config. "
                         "Error rate returning to baseline. Incident resolved."
                     )
-                    print(f"[{SLIM_NAME}] sending: {execution!r}")
+                    log(SLIM_NAME, f"sending: {execution!r}")
                     await updater.update_status(
                         state=TaskState.TASK_STATE_WORKING,
                         message=make_agent_message(execution, FULL_SLIM_NAME, task.context_id, task.id),

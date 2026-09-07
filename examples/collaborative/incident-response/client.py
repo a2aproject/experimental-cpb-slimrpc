@@ -39,6 +39,7 @@ from agents.base import (
     SLIM_URL,
     SLIM_SECRET,
     get_message_text,
+    log,
 )
 from broadcast_transport import BroadcastLiveClient
 from slima2a import setup_slim_client
@@ -101,7 +102,7 @@ async def main() -> None:
         "Duration: 90s. Affected region: us-east-1."
     )
     print(f"\n--- Broadcast Live Session ---\n")
-    print(f"[client] sending: {trigger!r}\n")
+    log("client", f"sending: {trigger!r}\n")
 
     # Queue lets the response loop inject follow-up requests into the send stream.
     # None is the close signal.
@@ -122,18 +123,21 @@ async def main() -> None:
         requests(),
         metadata={"slimrpc-live-routing": "broadcast"},
     ):
+        # Extract short agent name for log coloring (last path component).
+        short_name = slim_name.rsplit("/", 1)[-1]
+
         if response.HasField("task"):
             task = response.task
-            print(f"[{slim_name}] task={task.id!r} context={task.context_id!r}")
+            log(short_name, f"task={task.id!r} context={task.context_id!r}")
 
         elif response.HasField("status_update"):
             update = response.status_update
             msg_text = get_message_text(update.status.message) if update.status.HasField("message") else ""
             state_name = TaskState.Name(update.status.state).removeprefix("TASK_STATE_").lower()
             if msg_text:
-                print(f"[{slim_name}] [{state_name}] {msg_text}")
+                log(short_name, f"[{state_name}] {msg_text}")
             else:
-                print(f"[{slim_name}] state={state_name}")
+                log(short_name, f"state={state_name}")
 
             # Approve the remediation plan on first REMEDIATION message from the
             # remediation agent. The approval is broadcast to all agents.
@@ -144,7 +148,9 @@ async def main() -> None:
             ):
                 approved = True
                 approval = "APPROVED: please execute the remediation plan."
-                print(f"\n[client] sending approval: {approval!r}\n")
+                print()
+                log("client", f"sending approval: {approval!r}")
+                print()
                 await send_queue.put(_make_initial_request(approval))
 
             # Close the session once the remediation agent confirms execution.
@@ -152,15 +158,17 @@ async def main() -> None:
                 slim_name == remediation_agent
                 and "REMEDIATION EXECUTED:" in msg_text
             ):
-                print(f"\n[client] remediation confirmed — closing session\n")
+                print()
+                log("client", "remediation confirmed — closing session")
+                print()
                 await send_queue.put(None)
 
         elif response.HasField("message_update"):
             text = get_message_text(response.message_update.message)
-            print(f"[{slim_name}] {text}")
+            log(short_name, text)
 
         elif response.HasField("artifact_update"):
-            print(f"[{slim_name}] artifact update")
+            log(short_name, "artifact update")
 
     print(f"\n--- Session complete ---")
 

@@ -33,6 +33,7 @@ from agents.base import (
     GROUP,
     get_message_text,
     get_slim_src,
+    log,
     make_agent_card,
     make_agent_message,
     start_agent,
@@ -66,7 +67,7 @@ class MonitoringAgentExecutor(AgentExecutor):
                 text = get_message_text(msg_ctx.message)
 
                 if "ANOMALY" in text.upper() and sender != FULL_SLIM_NAME:
-                    print(f"[{SLIM_NAME}] received trigger from {sender}: {text!r}")
+                    log(SLIM_NAME, f"received trigger from {sender}: {text!r}")
                     metrics = (
                         "METRICS: service=/api/checkout "
                         "error_rate=45% threshold=5% "
@@ -75,7 +76,7 @@ class MonitoringAgentExecutor(AgentExecutor):
                         "spike_start=2024-01-15T10:22:30Z "
                         "db_pool_wait_ms=29800"
                     )
-                    print(f"[{SLIM_NAME}] broadcasting: {metrics!r}")
+                    log(SLIM_NAME, f"broadcasting: {metrics!r}")
                     await updater.update_status(
                         state=TaskState.TASK_STATE_WORKING,
                         message=make_agent_message(metrics, FULL_SLIM_NAME, task.context_id, task.id),

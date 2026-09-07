@@ -45,6 +45,22 @@ BROADCAST_LIVE_EXTENSION_URI = (
     "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/broadcast-live/v1"
 )
 
+# ANSI color codes for log output — one per named participant.
+_COLORS = {
+    "client":             "\033[1;37m",   # bold white
+    "monitoring-agent":   "\033[1;33m",   # bold yellow
+    "log-agent":          "\033[1;36m",   # bold cyan
+    "diagnostics-agent":  "\033[1;35m",   # bold magenta
+    "remediation-agent":  "\033[1;32m",   # bold green
+}
+_RESET = "\033[0m"
+
+
+def log(name: str, msg: str) -> None:
+    """Print a color-coded log line prefixed with the participant name."""
+    color = _COLORS.get(name, "\033[1m")
+    print(f"{color}[{name}]{_RESET} {msg}")
+
 
 # ---------------------------------------------------------------------------
 # Message helpers
@@ -140,5 +156,5 @@ async def start_agent(
     server = slim_bindings.Server.new_with_connection(local_app, local_name, conn_id)
     _add_a2a(srpc_handler, server)
 
-    print(f"[{slim_name}] ready at {NAMESPACE}/{GROUP}/{slim_name}")
+    log(slim_name, f"ready at {NAMESPACE}/{GROUP}/{slim_name}")
     await server.serve_async()
