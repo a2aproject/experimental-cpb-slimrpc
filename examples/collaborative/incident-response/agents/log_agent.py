@@ -74,7 +74,7 @@ class LogAgentExecutor(AgentExecutor):
                 sender = get_slim_src(msg_ctx.message)
                 text = get_message_text(msg_ctx.message)
 
-                if not logs_sent and "ALERT" in text.upper() and sender != FULL_SLIM_NAME:
+                if not logs_sent and "ANOMALY" in text.upper() and sender != FULL_SLIM_NAME:
                     logs_sent = True
                     print(f"[{SLIM_NAME}] received alert from {sender}, streaming logs...")
                     for log_line in SIMULATED_LOGS:

@@ -41,12 +41,20 @@ from agents.base import (
 SLIM_NAME = "diagnostics-agent"
 FULL_SLIM_NAME = f"{NAMESPACE}/{GROUP}/{SLIM_NAME}"
 
-EVIDENCE_SIGNALS: list[tuple[str, float, str]] = [
-    ("connection refused", 0.4, "DB connections being refused"),
-    ("connection pool exhausted", 0.3, "DB connection pool is full"),
-    ("deadline exceeded", 0.2, "requests timing out waiting for DB"),
+# Signals from the log agent (LOG: prefix)
+LOG_SIGNALS: list[tuple[str, float, str]] = [
+    ("connection refused", 0.3, "DB connections being refused"),
+    ("connection pool exhausted", 0.25, "DB connection pool is full"),
+    ("deadline exceeded", 0.15, "requests timing out waiting for DB"),
     ("max_connections=100 active=100", 0.1, "DB at maximum connection limit"),
 ]
+
+# Signals from the monitoring agent (METRICS: prefix)
+METRICS_SIGNALS: list[tuple[str, float, str]] = [
+    ("db_pool_wait_ms", 0.3, "elevated DB pool wait time in metrics"),
+    ("error_rate=45%", 0.2, "high error rate on checkout service"),
+]
+
 CONFIDENCE_THRESHOLD = 0.7
 
 
@@ -76,16 +84,26 @@ class DiagnosticsAgentExecutor(AgentExecutor):
                 sender = get_slim_src(msg_ctx.message)
                 text = get_message_text(msg_ctx.message)
 
-                if not text.startswith("LOG:") or sender != f"{NAMESPACE}/{GROUP}/log-agent":
+                log_agent = f"{NAMESPACE}/{GROUP}/log-agent"
+                monitoring_agent = f"{NAMESPACE}/{GROUP}/monitoring-agent"
+
+                if sender == log_agent and text.startswith("LOG:"):
+                    line = text[4:].strip()
+                    print(f"[{SLIM_NAME}] log evidence from {sender}: {line!r}")
+                    for keyword, weight, evidence_desc in LOG_SIGNALS:
+                        if keyword.lower() in line.lower():
+                            evidence.append(evidence_desc)
+                            confidence = min(1.0, confidence + weight)
+
+                elif sender == monitoring_agent and text.startswith("METRICS:"):
+                    print(f"[{SLIM_NAME}] metrics evidence from {sender}: {text!r}")
+                    for keyword, weight, evidence_desc in METRICS_SIGNALS:
+                        if keyword.lower() in text.lower():
+                            evidence.append(evidence_desc)
+                            confidence = min(1.0, confidence + weight)
+
+                else:
                     continue
-
-                log_line = text[4:].strip()
-                print(f"[{SLIM_NAME}] processing log from {sender}: {log_line!r}")
-
-                for keyword, weight, evidence_desc in EVIDENCE_SIGNALS:
-                    if keyword.lower() in log_line.lower():
-                        evidence.append(evidence_desc)
-                        confidence = min(1.0, confidence + weight)
 
                 if confidence >= CONFIDENCE_THRESHOLD and not diagnosis_sent:
                     diagnosis_sent = True

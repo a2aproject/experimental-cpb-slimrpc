@@ -65,17 +65,20 @@ class MonitoringAgentExecutor(AgentExecutor):
                 sender = get_slim_src(msg_ctx.message)
                 text = get_message_text(msg_ctx.message)
 
-                if "ANOMALY" in text.upper():
+                if "ANOMALY" in text.upper() and sender != FULL_SLIM_NAME:
                     print(f"[{SLIM_NAME}] received trigger from {sender}: {text!r}")
-                    alert = (
-                        "ALERT: Error rate spike detected on /api/checkout — "
-                        "45% (threshold: 5%). Timestamp: 2024-01-15T10:23:00Z. "
-                        "Requesting log analysis and diagnostics."
+                    metrics = (
+                        "METRICS: service=/api/checkout "
+                        "error_rate=45% threshold=5% "
+                        "p99_latency=28400ms baseline_p99=320ms "
+                        "affected_region=us-east-1 "
+                        "spike_start=2024-01-15T10:22:30Z "
+                        "db_pool_wait_ms=29800"
                     )
-                    print(f"[{SLIM_NAME}] broadcasting: {alert!r}")
+                    print(f"[{SLIM_NAME}] broadcasting: {metrics!r}")
                     await updater.update_status(
                         state=TaskState.TASK_STATE_WORKING,
-                        message=make_agent_message(alert, FULL_SLIM_NAME, task.context_id, task.id),
+                        message=make_agent_message(metrics, FULL_SLIM_NAME, task.context_id, task.id),
                     )
         except QueueShutDown:
             pass
