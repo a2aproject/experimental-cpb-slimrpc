@@ -57,6 +57,7 @@ class RemediationAgentExecutor(AgentExecutor):
         task = None
         updater = None
         remediation_sent = False
+        awaiting_approval = False
         try:
             while True:
                 msg_ctx = await input_queue.get()
@@ -68,44 +69,65 @@ class RemediationAgentExecutor(AgentExecutor):
                     await event_queue.enqueue_event(task)
                     updater = TaskUpdater(event_queue, task.id, task.context_id)
 
-                if remediation_sent:
-                    continue
-
                 sender = get_slim_src(msg_ctx.message)
                 text = get_message_text(msg_ctx.message)
 
-                if (
-                    not text.startswith("DIAGNOSIS")
-                    or sender != f"{NAMESPACE}/{GROUP}/diagnostics-agent"
-                ):
-                    continue
+                # Step 1: propose remediation plan on first confident diagnosis.
+                if not remediation_sent:
+                    if (
+                        not text.startswith("DIAGNOSIS")
+                        or sender != f"{NAMESPACE}/{GROUP}/diagnostics-agent"
+                    ):
+                        continue
 
-                match = _CONFIDENCE_RE.search(text)
-                confidence = float(match.group(1)) if match else 0.0
+                    match = _CONFIDENCE_RE.search(text)
+                    confidence = float(match.group(1)) if match else 0.0
 
-                if confidence < MIN_CONFIDENCE:
-                    print(
-                        f"[{SLIM_NAME}] diagnosis confidence {confidence:.1f} < "
-                        f"{MIN_CONFIDENCE} — waiting for more evidence"
+                    if confidence < MIN_CONFIDENCE:
+                        print(
+                            f"[{SLIM_NAME}] diagnosis confidence {confidence:.1f} < "
+                            f"{MIN_CONFIDENCE} — waiting for more evidence"
+                        )
+                        continue
+
+                    remediation_sent = True
+                    awaiting_approval = True
+                    print(f"[{SLIM_NAME}] acting on diagnosis from {sender}: {text!r}")
+                    plan = (
+                        "REMEDIATION: DB connection pool exhausted on checkout service. "
+                        "Proposed actions: "
+                        "(1) Restart checkout-db-pool: `systemctl restart checkout-db-pool`. "
+                        "(2) Increase max_connections on db.prod from 100 → 200 "
+                        "(edit /etc/postgresql/postgresql.conf, then reload). "
+                        "Expected recovery time: ~30s after step 1. "
+                        "Post-incident: add connection-pool alerting at 80% utilisation. "
+                        "Awaiting approval to execute."
                     )
-                    continue
+                    print(f"[{SLIM_NAME}] proposing plan: {plan!r}")
+                    await updater.update_status(
+                        state=TaskState.TASK_STATE_INPUT_REQUIRED,
+                        message=make_agent_message(plan, FULL_SLIM_NAME, task.context_id, task.id),
+                    )
 
-                remediation_sent = True
-                print(f"[{SLIM_NAME}] acting on diagnosis from {sender}: {text!r}")
-                remediation = (
-                    "REMEDIATION: DB connection pool exhausted on checkout service. "
-                    "Immediate actions: "
-                    "(1) Restart checkout-db-pool: `systemctl restart checkout-db-pool`. "
-                    "(2) Increase max_connections on db.prod from 100 → 200 "
-                    "(edit /etc/postgresql/postgresql.conf, then reload). "
-                    "Expected recovery time: ~30s after step 1. "
-                    "Post-incident: add connection-pool alerting at 80% utilisation."
-                )
-                print(f"[{SLIM_NAME}] sending: {remediation!r}")
-                await updater.update_status(
-                    state=TaskState.TASK_STATE_WORKING,
-                    message=make_agent_message(remediation, FULL_SLIM_NAME, task.context_id, task.id),
-                )
+                # Step 2: execute once an APPROVED message is received from the client.
+                elif awaiting_approval:
+                    if "APPROVED" not in text.upper():
+                        continue
+
+                    awaiting_approval = False
+                    print(f"[{SLIM_NAME}] approval received from {sender}, executing remediation")
+                    execution = (
+                        "REMEDIATION EXECUTED: "
+                        "Restarted checkout-db-pool — pool accepting connections. "
+                        "Updated max_connections to 200 on db.prod and reloaded config. "
+                        "Error rate returning to baseline. Incident resolved."
+                    )
+                    print(f"[{SLIM_NAME}] sending: {execution!r}")
+                    await updater.update_status(
+                        state=TaskState.TASK_STATE_WORKING,
+                        message=make_agent_message(execution, FULL_SLIM_NAME, task.context_id, task.id),
+                    )
+
         except QueueShutDown:
             pass
         finally:

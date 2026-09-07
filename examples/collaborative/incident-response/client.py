@@ -94,6 +94,8 @@ async def main() -> None:
 
     broadcast_client = BroadcastLiveClient(agents)
 
+    from a2a.types.a2a_pb2 import TaskState
+
     trigger = (
         "ANOMALY DETECTED: /api/checkout error rate 45% (threshold: 5%). "
         "Duration: 90s. Affected region: us-east-1."
@@ -101,11 +103,20 @@ async def main() -> None:
     print(f"\n--- Broadcast Live Session ---\n")
     print(f"[client] sending: {trigger!r}\n")
 
+    # Queue lets the response loop inject follow-up requests into the send stream.
+    # None is the close signal.
+    send_queue: asyncio.Queue[StreamRequest | None] = asyncio.Queue()
+
     async def requests():
         yield _make_initial_request(trigger)
-        # Keep the send stream open so agents can continue exchanging messages.
-        # The session ends once all agents close their response streams.
-        await asyncio.Event().wait()
+        while True:
+            item = await send_queue.get()
+            if item is None:
+                return
+            yield item
+
+    remediation_agent = f"{NAMESPACE}/{GROUP}/remediation-agent"
+    approved = False
 
     async for slim_name, response in broadcast_client.send_live_message(
         requests(),
@@ -114,23 +125,36 @@ async def main() -> None:
         if response.HasField("task"):
             task = response.task
             print(f"[{slim_name}] task={task.id!r} context={task.context_id!r}")
+
         elif response.HasField("status_update"):
             update = response.status_update
             msg_text = get_message_text(update.status.message) if update.status.HasField("message") else ""
-            state = update.status.state
-            from a2a.types.a2a_pb2 import TaskState
-            state_name = TaskState.Name(state).removeprefix("TASK_STATE_").lower()
+            state_name = TaskState.Name(update.status.state).removeprefix("TASK_STATE_").lower()
             if msg_text:
                 print(f"[{slim_name}] [{state_name}] {msg_text}")
             else:
                 print(f"[{slim_name}] state={state_name}")
+
+            # Approve the remediation plan on first REMEDIATION message from the
+            # remediation agent. The approval is broadcast to all agents.
+            if (
+                not approved
+                and slim_name == remediation_agent
+                and "REMEDIATION:" in msg_text
+            ):
+                approved = True
+                approval = "APPROVED: please execute the remediation plan."
+                print(f"\n[client] sending approval: {approval!r}\n")
+                await send_queue.put(_make_initial_request(approval))
+
         elif response.HasField("message_update"):
-            update = response.message_update
-            text = get_message_text(update.message)
+            text = get_message_text(response.message_update.message)
             print(f"[{slim_name}] {text}")
+
         elif response.HasField("artifact_update"):
             print(f"[{slim_name}] artifact update")
 
+    await send_queue.put(None)
     print(f"\n--- Session complete ---")
 
 
