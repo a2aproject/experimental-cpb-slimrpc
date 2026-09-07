@@ -147,6 +147,14 @@ async def main() -> None:
                 print(f"\n[client] sending approval: {approval!r}\n")
                 await send_queue.put(_make_initial_request(approval))
 
+            # Close the session once the remediation agent confirms execution.
+            if (
+                slim_name == remediation_agent
+                and "REMEDIATION EXECUTED:" in msg_text
+            ):
+                print(f"\n[client] remediation confirmed — closing session\n")
+                await send_queue.put(None)
+
         elif response.HasField("message_update"):
             text = get_message_text(response.message_update.message)
             print(f"[{slim_name}] {text}")
@@ -154,7 +162,6 @@ async def main() -> None:
         elif response.HasField("artifact_update"):
             print(f"[{slim_name}] artifact update")
 
-    await send_queue.put(None)
     print(f"\n--- Session complete ---")
 
 
