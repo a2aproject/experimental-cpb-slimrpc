@@ -156,8 +156,12 @@ uv run python -m agents.diagnostics_agent
 uv run python -m agents.remediation_agent
 
 # Terminal 5: run the client (after agents are ready)
-uv run python client.py
+uv run python client.py                     # default: nstreams transport
+uv run python client.py --transport nstreams   # explicit nstreams
+uv run python client.py --transport multicast  # SLIM GROUP channel
 ```
+
+The `--transport` flag selects between two broadcast implementations that produce identical behaviour; see [Transport modes](#transport-modes) below.
 
 ## File layout
 
@@ -166,8 +170,9 @@ incident-response/
 ├── README.md                       — this file
 ├── pyproject.toml                  — Python package dependencies (uv)
 ├── run.sh                          — convenience script: start all agents + client
-├── broadcast_transport.py          — BroadcastLiveClient application-layer broadcast router
-├── client.py                       — opens broadcast live session, drives two-phase approval
+├── nstreams_transport.py           — NStreamsBroadcastTransport: N point-to-point streams
+├── multicast_transport.py          — MulticastBroadcastTransport: single GROUP channel stream
+├── client.py                       — opens broadcast session (--transport flag), drives approval
 └── agents/
     ├── base.py                     — shared constants, log(), make_agent_card(), start_agent()
     ├── monitoring_agent.py         — emits METRICS: data on ANOMALY trigger
@@ -176,12 +181,26 @@ incident-response/
     └── remediation_agent.py        — proposes plan on DIAGNOSIS, executes on APPROVED
 ```
 
+## Transport modes
+
+Both transport modules implement the same interface and produce identical session behaviour. The difference is how fan-out and relay are implemented:
+
+| | `nstreams` (default) | `multicast` |
+| :--- | :--- | :--- |
+| **SLIM channels** | N point-to-point `SRPCTransport` instances | 1 `SRPCMulticastTransport` on a GROUP channel |
+| **Client fan-out** | Application loop copies each `StreamRequest` to N per-agent queues | SLIM delivers a single send to all agents natively |
+| **Cross-agent relay** | N `read_agent` tasks, one queue per agent | Single relay loop; re-sends forwarded items into the same group stream |
+| **Echo suppression** | Application-level (`if other_name != slim_name`) | Agents' own `sender != FULL_SLIM_NAME` guards |
+
+The `multicast` mode is the closer match to the SLIMRPC multicast spec: the group channel send genuinely reaches every agent in a single SLIM operation.
+
 ## Key spec concepts demonstrated
 
 | Concept | Where |
 | :------ | :----- |
-| `SendLiveMessage(stream StreamRequest) returns (stream StreamResponse)` — A2A 1.1 BiDi streaming | `broadcast_transport.py`, each agent's `execute()` |
-| Application-layer broadcast routing (pending transport-layer support) | `BroadcastLiveClient` in `broadcast_transport.py` |
+| `SendLiveMessage(stream StreamRequest) returns (stream StreamResponse)` — A2A 1.1 BiDi streaming | `nstreams_transport.py` / `multicast_transport.py`, each agent's `execute()` |
+| Application-layer broadcast routing (`nstreams` mode) | `NStreamsBroadcastTransport` in `nstreams_transport.py` |
+| Native SLIM GROUP channel multicast (`multicast` mode) | `MulticastBroadcastTransport` in `multicast_transport.py` |
 | `slim-src` attribution injected at transport layer | `BroadcastLiveClient.fan_out_client()` |
 | Parallel agent activation on single client message | `monitoring_agent.py` + `log_agent.py` both react to ANOMALY |
 | `AgentExecutor.execute(context, event_queue, input_queue)` — A2A 1.1 executor API | All four agents |

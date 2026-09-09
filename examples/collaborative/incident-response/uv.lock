@@ -846,7 +846,7 @@ wheels = [
 [[package]]
 name = "slima2a"
 version = "0.7.0"
-source = { git = "https://github.com/agntcy/slim-a2a-python?branch=feat%2Fsend-live-message#0c35f763468942de003dd97c72e9a0013ac665aa" }
+source = { git = "https://github.com/agntcy/slim-a2a-python?branch=feat%2Fsend-live-message#1888e4fefbe1310907c1aaf3cfa75ebce0fa0259" }
 dependencies = [
     { name = "a2a-sdk", extra = ["sqlite", "telemetry"] },
     { name = "slim-bindings" },

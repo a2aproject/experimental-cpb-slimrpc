@@ -12,15 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Application-layer broadcast routing for SendLiveMessage.
+"""N-streams application-layer broadcast routing for SendLiveMessage.
 
-BroadcastLiveClient wraps N point-to-point SRPCTransport instances and
+NStreamsBroadcastTransport wraps N point-to-point SRPCTransport instances and
 implements the broadcast-live spec pattern: each StreamResponse from any
 agent is forwarded as a StreamRequest to all other agents, so every
 participant sees every message in the session.
 
-This mirrors what will eventually live in slim-a2a-python as a first-class
-BroadcastSRPCTransport once the SLIM transport layer adds broadcast routing.
+This uses N independent point-to-point streams.  See multicast_transport.py
+for an equivalent that uses a single SLIM GROUP channel bidi stream.
 """
 
 import asyncio
@@ -79,7 +79,7 @@ def _synthetic_message(text: str, slim_src: str, peer_task_id: str, state: TaskS
     return StreamRequest(message=msg)
 
 
-class BroadcastLiveClient:
+class NStreamsBroadcastTransport:
     """Application-layer broadcast routing over N SRPCTransport instances.
 
     Opens one SendLiveMessage stream per agent and implements a bidirectional
@@ -98,7 +98,7 @@ class BroadcastLiveClient:
             await asyncio.sleep(5)
             yield follow_up_message  # sent while agents are still responding
 
-        client = BroadcastLiveClient([
+        client = NStreamsBroadcastTransport([
             ("mydomain/demo/agent-a", transport_a),
             ("mydomain/demo/agent-b", transport_b),
         ])

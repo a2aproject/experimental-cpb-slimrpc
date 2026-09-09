@@ -14,15 +14,20 @@
 
 """Incident-response broadcast live session client.
 
-Connects to each of the four agents over point-to-point SLIM channels,
-initiates a SendLiveMessage broadcast session via BroadcastLiveClient,
-and prints every (agent, event) tuple received during the session.
+Connects to agents over SLIM and initiates a SendLiveMessage broadcast session.
+Two transport modes are available via --transport:
 
-The BroadcastLiveClient implements application-layer broadcast routing:
-each agent's StreamResponse items are forwarded as StreamRequest items to
-all other agents, so every participant sees the full conversation.
+  nstreams   (default) NStreamsBroadcastTransport — N point-to-point SRPCTransport
+             instances, application-layer fan-out and cross-agent relay.
+
+  multicast  MulticastBroadcastTransport — single SRPCMulticastTransport on a
+             SLIM GROUP channel; SLIM delivers fan-out natively and the relay
+             re-sends peer responses back into the same group stream.
+
+Both expose the same send_live_message() interface; agent code is identical.
 """
 
+import argparse
 import asyncio
 import sys
 import uuid
@@ -41,7 +46,6 @@ from agents.base import (
     get_message_text,
     log,
 )
-from broadcast_transport import BroadcastLiveClient
 from slima2a import setup_slim_client
 from slima2a.client_transport import SRPCTransport
 
@@ -76,7 +80,7 @@ def _channel_factory(local_app: slim_bindings.App, conn_id: int):
     return factory
 
 
-async def main() -> None:
+async def main(transport_mode: str = "nstreams") -> None:
     _service, local_app, _local_name, conn_id = await setup_slim_client(
         namespace=NAMESPACE,
         group=GROUP,
@@ -85,16 +89,26 @@ async def main() -> None:
         secret=SLIM_SECRET,
     )
 
-    factory = _channel_factory(local_app, conn_id)
+    if transport_mode == "multicast":
+        from multicast_transport import MulticastBroadcastTransport
+        from slima2a.client_transport import slimrpc_group_channel_factory
 
-    agents = []
-    for agent_name in AGENT_NAMES:
-        slim_name = f"{NAMESPACE}/{GROUP}/{agent_name}"
-        channel = factory(slim_name)
-        transport = SRPCTransport(channel=channel, agent_card=None)
-        agents.append((slim_name, transport))
+        factory = slimrpc_group_channel_factory(local_app, conn_id)
+        channel = factory([f"{NAMESPACE}/{GROUP}/{name}" for name in AGENT_NAMES])
+        broadcast_client = MulticastBroadcastTransport(channel, source_slim_name=CLIENT_SLIM_NAME)
+        log("client", f"transport: multicast (GROUP channel)")
+    else:
+        from nstreams_transport import NStreamsBroadcastTransport
 
-    broadcast_client = BroadcastLiveClient(agents, source_slim_name=CLIENT_SLIM_NAME)
+        p2p_factory = _channel_factory(local_app, conn_id)
+        agents = []
+        for agent_name in AGENT_NAMES:
+            slim_name = f"{NAMESPACE}/{GROUP}/{agent_name}"
+            channel = p2p_factory(slim_name)
+            transport = SRPCTransport(channel=channel, agent_card=None)
+            agents.append((slim_name, transport))
+        broadcast_client = NStreamsBroadcastTransport(agents, source_slim_name=CLIENT_SLIM_NAME)
+        log("client", f"transport: nstreams ({len(AGENT_NAMES)} point-to-point streams)")
 
     from a2a.types.a2a_pb2 import TaskState
 
@@ -175,4 +189,12 @@ async def main() -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser(description="Incident-response broadcast live client")
+    parser.add_argument(
+        "--transport",
+        choices=["nstreams", "multicast"],
+        default="nstreams",
+        help="Transport mode: nstreams (N point-to-point streams) or multicast (GROUP channel)",
+    )
+    args = parser.parse_args()
+    asyncio.run(main(transport_mode=args.transport))
