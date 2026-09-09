@@ -83,6 +83,10 @@ The SLIMRPC runtime is responsible for translating `StreamResponse` items receiv
 
 ### 5.1. Translation Rules
 
+**Client-originated `StreamRequest` items** (sent by the initiating client and broadcast to all agents) are delivered directly to each agent's inbound stream without structural modification. The SLIMRPC runtime **MUST** inject `slim-src` from the SLIM transport `src` field before delivery so that agents can identify the sender.
+
+**Peer `StreamResponse` items** (emitted by an agent and broadcast to all other channel members) are translated into `StreamRequest` items before delivery:
+
 | Peer sends (`StreamResponse`) | Translated to (`StreamRequest`) | Metadata added |
 | :--- | :--- | :--- |
 | Initial `Task` (first response) | `StreamRequest { message: synthetic task-announcement Message }` | `slim-src`, `slim-peer-task-id` |
@@ -105,19 +109,27 @@ The SLIMRPC runtime **MUST NOT** deliver a translated `StreamRequest` back to th
 
 ## 6. Message Attribution
 
-Every translated `StreamRequest` item delivered to a receiving member **MUST** carry the following metadata keys:
+The SLIMRPC layer populates attribution metadata from the SLIM transport `src` field before delivering any item to a receiving member. Application code **MUST NOT** set or override these keys.
 
-| Metadata Key | Type | Description |
-| :--- | :--- | :--- |
-| `slim-src` | string | SLIM name of the originating sender in `domain/namespace/service` format |
-| `slim-peer-task-id` | string | Task ID of the peer agent that produced this event |
-| `slim-peer-state` | string | Task state of the peer at the time of the event (`working`, `completed`, `failed`, etc.); present on translated `TaskStatusUpdateEvent` items only |
+**`slim-src`** **MUST** be present on every `StreamRequest` item delivered to a receiving member, regardless of whether the item originates from the initiating client or is translated from a peer agent's `StreamResponse`.
 
-The SLIMRPC layer populates `slim-src` from the SLIM transport `src` field before delivering the translated item to the receiving agent. Application code does not set these keys.
+**`slim-peer-task-id`** and **`slim-peer-state`** are only meaningful for translated peer items and **MUST NOT** be present on client-originated items:
+
+| Metadata Key | Type | Present on | Description |
+| :--- | :--- | :--- | :--- |
+| `slim-src` | string | All items | SLIM name of the originating sender in `domain/namespace/service` format |
+| `slim-peer-task-id` | string | Translated peer items only | Task ID of the peer agent that produced this event |
+| `slim-peer-state` | string | Translated `TaskStatusUpdateEvent` items only | Task state of the peer at the time of the event (`working`, `completed`, `failed`, etc.) |
 
 Recipients **MUST** use `metadata["slim-src"]` for sender attribution at the A2A layer.
 
-**Example translated `StreamRequest` metadata:**
+**Example — client-originated item:**
+
+```
+slim-src: mydomain/demo/client
+```
+
+**Example — translated peer item:**
 
 ```
 slim-src: mydomain/demo/agent-a
