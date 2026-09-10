@@ -33,9 +33,9 @@ The following table maps the abstract attribution fields from [Section 5.2 of th
 
 | Abstract field | SLIMRPC metadata key | Value format |
 | :--- | :--- | :--- |
-| sender (`broadcast-src`) | `slim-src` | SLIM name in `domain/namespace/service` format |
-| peer task ID (`broadcast-peer-task-id`) | `slim-peer-task-id` | A2A task ID string |
-| peer state (`broadcast-peer-state`) | `slim-peer-state` | `TaskState` name (lower-case, no `TASK_STATE_` prefix) |
+| `message-sender` | `slim-src` | SLIM name in `domain/namespace/service` format |
+| `peer-task-id` | `slim-peer-task-id` | A2A task ID string |
+| `peer-state` | `slim-peer-state` | `TaskState` name (lower-case, no `TASK_STATE_` prefix) |
 | Context map | `slimrpc-context-map` | JSON object `{ "SLIM name" → "contextId" }` |
 
 `slim-src` is populated from the SLIM transport `src` field. Application code **MUST NOT** set or override any of these keys.

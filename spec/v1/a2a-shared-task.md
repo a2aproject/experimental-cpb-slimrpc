@@ -12,7 +12,7 @@ What the base A2A spec does not define is how the agent distinguishes *which* cl
 
 This extension defines:
 
-- A standard `task-sender` metadata key that carries the identity of the sender on each inbound message
+- A standard `message-sender` metadata field (namespaced under the extension URI) that carries the identity of the sender on each inbound message
 - Agent behaviour rules when multiple senders contribute to one task
 
 Use cases:
@@ -21,23 +21,29 @@ Use cases:
 - **Multi-client consensus:** agent waits for input from any of N authorised clients before proceeding
 - **Shared workspace:** multiple humans observe and direct the same running task; each sees all agent output
 
-## 2. `task-sender` Metadata Key
+## 2. `message-sender` Metadata Field
 
-The `task-sender` field carries the identity of the client that sent a specific message. It is an abstract field; bindings define the concrete metadata key name and the identity value format.
+This extension defines one metadata field, `message-sender`, namespaced under the extension URI. It carries the identity of the client that sent this specific message.
 
-| Abstract field | Description |
-| :--- | :--- |
-| `task-sender` | Identity of the client that sent this message |
+**Key structure:** Extension metadata is a dictionary nested under the extension URI as the parent key in `Message.metadata`:
 
-**Presence:** `task-sender` **MUST** be present on every `Message` delivered to the executor's `input_queue` when the agent has declared the shared-task extension.
+```json
+{
+  "https://a2a-protocol.org/extensions/shared-task/v1": {
+    "message-sender": "<sender identity>"
+  }
+}
+```
 
-**Population:** The entity responsible for populating `task-sender` is implementation-defined. It **MAY** be:
+**Presence:** `message-sender` **MUST** be present on every `Message` delivered to the executor's `input_queue` when the agent has declared the shared-task extension.
+
+**Population:** The entity responsible for populating `message-sender` is implementation-defined. It **MAY** be:
 
 - The transport layer, from an authenticated connection identity
 - The protocol binding
 - Application-layer middleware that stamps the value before the message is enqueued
 
-Sending clients **MAY** set `task-sender` themselves if no lower layer provides it, subject to whatever trust model the agent enforces. Agents that rely on `task-sender` for authorisation decisions **SHOULD** document whether they trust client-supplied values.
+Sending clients **MAY** set `message-sender` themselves if no lower layer provides it, subject to whatever trust model the agent enforces. Agents that rely on `message-sender` for authorisation decisions **SHOULD** document whether they trust client-supplied values.
 
 **Format:** The value is an opaque string. Its format is defined by the binding or deployment (e.g. a SLIM name, a user ID, a session token, a connection identifier).
 
@@ -45,9 +51,9 @@ Sending clients **MAY** set `task-sender` themselves if no lower layer provides 
 
 ### 3.1. Receiving Messages from Multiple Senders
 
-The agent **MUST** handle the case where the `task-sender` value differs between messages. There is no guarantee that consecutive `input_queue` items come from the same sender.
+The agent **MUST** handle the case where `message-sender` differs between messages. There is no guarantee that consecutive `input_queue` items come from the same sender.
 
-The agent **MAY** maintain per-sender state keyed by `task-sender`. The agent **MAY** respond differently based on sender identity (e.g. restricting certain operations to authorised senders, personalising output, or routing subtasks).
+The agent **MAY** maintain per-sender state keyed by `message-sender`. The agent **MAY** respond differently based on sender identity (e.g. restricting certain operations to authorised senders, personalising output, or routing subtasks).
 
 ### 3.2. Response Fan-out
 
@@ -55,7 +61,7 @@ All `StreamResponse` events emitted by the agent are delivered to all active sub
 
 ### 3.3. Timeline
 
-The agent **SHOULD** preserve the `task-sender` value on `TimelineEntry(Message)` items appended to the task `timeline`, so the sender of each message is identifiable in the persisted record.
+The agent **SHOULD** preserve the `message-sender` value on `TimelineEntry(Message)` items appended to the task `timeline`, so the sender of each message is identifiable in the persisted record.
 
 ## 4. Extension Declaration
 
@@ -65,7 +71,7 @@ Agents that support shared tasks **MUST** declare the extension URI in their Age
 https://a2a-protocol.org/extensions/shared-task/v1
 ```
 
-Clients that intend to join an active task **SHOULD** verify the agent declares this extension before sending messages to an existing `context_id`. Agents that do not declare the extension **MAY** still receive messages from multiple senders but are not required to honour the `task-sender` semantics defined here.
+Clients that intend to join an active task **SHOULD** verify the agent declares this extension before sending messages to an existing `context_id`. Agents that do not declare the extension **MAY** still receive messages from multiple senders but are not required to honour the `message-sender` semantics defined here.
 
 **Example Agent Card fragment:**
 
@@ -75,7 +81,7 @@ Clients that intend to join an active task **SHOULD** verify the agent declares 
     "extensions": [
       {
         "uri": "https://a2a-protocol.org/extensions/shared-task/v1",
-        "description": "Supports multiple clients sending to the same task; identifies each sender via task-sender metadata.",
+        "description": "Supports multiple clients sending to the same task; identifies each sender via the message-sender metadata field.",
         "required": false
       }
     ]

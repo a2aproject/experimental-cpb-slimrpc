@@ -122,19 +122,29 @@ For `TaskStatusUpdateEvent` with `status.message`, the translated message carrie
 
 ### 5.2. Message Attribution
 
-The runtime populates attribution metadata before delivering any item to a receiving member. Application code **MUST NOT** set or override these keys. The binding defines the actual metadata key names for the three abstract fields:
+The runtime populates attribution metadata before delivering any item to a receiving member. Application code **MUST NOT** set or override these fields. Attribution is stored as a nested dictionary under the broadcast-live extension URI in `Message.metadata`:
 
-| Abstract field | Present on | Description |
+```json
+{
+  "https://a2a-protocol.org/extensions/broadcast-live/v1": {
+    "message-sender": "<sender identity>",
+    "peer-task-id": "<peer task ID>",
+    "peer-state": "<peer task state>"
+  }
+}
+```
+
+| Field | Present on | Description |
 | :--- | :--- | :--- |
-| sender (`broadcast-src`) | All items | Identity of the originating sender; format defined by binding |
-| peer task ID (`broadcast-peer-task-id`) | Translated peer items only | Task ID of the peer agent that produced this event |
-| peer state (`broadcast-peer-state`) | Translated `TaskStatusUpdateEvent` items only | Task state of the peer at the time of the event |
+| `message-sender` | All items | Identity of the originating sender; format defined by binding |
+| `peer-task-id` | Translated peer items only | Task ID of the peer agent that produced this event |
+| `peer-state` | Translated `TaskStatusUpdateEvent` items only | Task state of the peer at the time of the event |
 
-**`broadcast-src`** **MUST** be present on every item delivered to a receiving member. For client-originated items and all translated peer items except `TaskMessageUpdateEvent`, the runtime sets this to the sender's identity. For translated `TaskMessageUpdateEvent` items, `broadcast-src` **MUST** be preserved from the original message (the external client that sent the out-of-band input) and **MUST NOT** be replaced with the relay agent's identity.
+**`message-sender`** **MUST** be present on every item delivered to a receiving member. For client-originated items and all translated peer items except `TaskMessageUpdateEvent`, the runtime sets this to the sender's identity. For translated `TaskMessageUpdateEvent` items, `message-sender` **MUST** be preserved from the original message (the external client that sent the out-of-band input) and **MUST NOT** be replaced with the relay agent's identity.
 
-**`broadcast-peer-task-id`** and **`broadcast-peer-state`** are only meaningful for translated peer items and **MUST NOT** be present on client-originated items.
+**`peer-task-id`** and **`peer-state`** are only meaningful for translated peer items and **MUST NOT** be present on client-originated items.
 
-**Alignment with shared-task `task-sender`:** Agents that also declare the [A2A Shared Task](a2a-shared-task.md) extension use `task-sender` as the per-message sender identity key on their own inbound stream. When broadcast-live and shared-task are both active, the runtime **SHOULD** set `task-sender` to the same value as `broadcast-src` on every delivered item, so agents see a consistent sender identity regardless of whether a message originated from a direct client or a translated peer event.
+**Alignment with shared-task:** Agents that also declare the [A2A Shared Task](a2a-shared-task.md) extension carry sender identity under a separate namespace. When broadcast-live and shared-task are both active, the runtime **SHOULD** also populate the shared-task `message-sender` field with the same value as the broadcast-live `message-sender`, so agents see consistent sender identity regardless of whether a message originated from a direct client or a translated peer event.
 
 ### 5.3. Session ID Rewriting
 
@@ -146,7 +156,7 @@ The runtime **MUST NOT** deliver a translated item back to the member that origi
 
 ## 6. Message Flows
 
-The following diagrams illustrate generic broadcast-live behaviour. Transport-layer operations (channel creation, membership) are omitted for brevity. Sender identity labels (`src=Client`, `src=AgentA`) use the abstract `broadcast-src` field.
+The following diagrams illustrate generic broadcast-live behaviour. Transport-layer operations (channel creation, membership) are omitted for brevity. Sender identity labels (`src=Client`, `src=AgentA`) represent the `message-sender` field.
 
 ### 6.1. Session Initiation and Task Creation
 
