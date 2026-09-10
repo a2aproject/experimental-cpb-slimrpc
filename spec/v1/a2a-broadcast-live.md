@@ -6,6 +6,8 @@ For a concrete implementation over SLIM group channels, see the [SLIMRPC Broadca
 
 ## 1. Overview
 
+Broadcast live messaging extends the [A2A Shared Task](a2a-shared-task.md) primitive from a single agent to a group of agents. The shared-task extension defines how multiple clients can send to the same running `Task` on one agent and how the agent identifies each sender via the `task-sender` metadata key. Broadcast live messaging applies the same pattern across N agents simultaneously: every participant — client or agent — sees every other participant's messages on their own inbound stream.
+
 Standard A2A task interactions follow a client-to-agent model: a client sends a request to one agent and receives a stream of events from that agent only. Each agent's output flows back to the initiating client, not to peer agents.
 
 Broadcast live messaging changes the routing model: when the broadcast-live extension is activated, every event from any participant is delivered to all other participants. Combined with the A2A 1.1 `timeline` semantics, this produces a group-chat model:
@@ -131,6 +133,8 @@ The runtime populates attribution metadata before delivering any item to a recei
 **`broadcast-src`** **MUST** be present on every item delivered to a receiving member. For client-originated items and all translated peer items except `TaskMessageUpdateEvent`, the runtime sets this to the sender's identity. For translated `TaskMessageUpdateEvent` items, `broadcast-src` **MUST** be preserved from the original message (the external client that sent the out-of-band input) and **MUST NOT** be replaced with the relay agent's identity.
 
 **`broadcast-peer-task-id`** and **`broadcast-peer-state`** are only meaningful for translated peer items and **MUST NOT** be present on client-originated items.
+
+**Alignment with shared-task `task-sender`:** Agents that also declare the [A2A Shared Task](a2a-shared-task.md) extension use `task-sender` as the per-message sender identity key on their own inbound stream. When broadcast-live and shared-task are both active, the runtime **SHOULD** set `task-sender` to the same value as `broadcast-src` on every delivered item, so agents see a consistent sender identity regardless of whether a message originated from a direct client or a translated peer event.
 
 ### 5.3. Session ID Rewriting
 
