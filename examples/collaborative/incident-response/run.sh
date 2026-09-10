@@ -57,7 +57,7 @@ echo "Waiting for agents to connect..."
 sleep 2
 
 echo "Running client..."
-uv run python client.py
+uv run python client.py --transport multicast
 
 echo ""
 echo "Done."

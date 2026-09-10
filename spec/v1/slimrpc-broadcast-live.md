@@ -87,17 +87,26 @@ The SLIMRPC runtime is responsible for translating `StreamResponse` items receiv
 
 **Peer `StreamResponse` items** (emitted by an agent and broadcast to all other channel members) are translated into `StreamRequest` items before delivery:
 
-| Peer sends (`StreamResponse`) | Translated to (`StreamRequest`) | Metadata added |
+| Peer sends (`StreamResponse`) | Translated to (`StreamRequest`) | Parts |
 | :--- | :--- | :--- |
-| Initial `Task` (first response) | `StreamRequest { message: synthetic task-announcement Message }` | `slim-src`, `slim-peer-task-id` |
-| `TaskStatusUpdateEvent` with `status.message` | `StreamRequest { message: status.message }` | `slim-src`, `slim-peer-task-id`, `slim-peer-state` |
-| `TaskStatusUpdateEvent` without `status.message` | Delivered as `StreamRequest { message: synthetic state-change Message }` | `slim-src`, `slim-peer-task-id`, `slim-peer-state` |
-| `TaskArtifactUpdateEvent` | `StreamRequest { artifact_update: artifact_update }` | `slim-src`, `slim-peer-task-id` |
-| `TaskMessageUpdateEvent` (client-message entry) | `StreamRequest { message: message }` | `slim-src`, `slim-peer-task-id` |
+| Initial `Task` | `StreamRequest { message }` | 1× `Part.data` (Task JSON) |
+| `TaskStatusUpdateEvent` with `status.message` | `StreamRequest { message }` | Original `status.message` parts + appended `Part.data` (TaskStatusUpdateEvent JSON) |
+| `TaskStatusUpdateEvent` without `status.message` | `StreamRequest { message }` | 1× `Part.data` (TaskStatusUpdateEvent JSON) |
+| `TaskArtifactUpdateEvent` | `StreamRequest { artifact_update }` (unchanged) | — |
+| `TaskMessageUpdateEvent` | `StreamRequest { message }` (original parts unchanged) | — |
 
-The synthetic task-announcement `Message` for the initial `Task` response **MUST** carry `role: ROLE_USER` and **SHOULD** include the peer's task ID in its text or data part so that receiving agents can record it.
+For `Task` and `TaskStatusUpdateEvent` items, the `Part.data` field is a `google.protobuf.Value` containing the JSON-serialised proto event with `preserving_proto_field_name=True` (snake_case field names). The `Part.media_type` **MUST** be set to identify the event type:
 
-The synthetic state-change `Message` for a `TaskStatusUpdateEvent` without `status.message` **MUST** carry `role: ROLE_USER` and **SHOULD** encode the new `TaskState` value so that receiving agents can track peer state without polling.
+| Event | `Part.media_type` |
+| :--- | :--- |
+| Initial `Task` | `application/vnd.a2a.task+json` |
+| `TaskStatusUpdateEvent` | `application/vnd.a2a.task-status-update+json` |
+
+For `TaskStatusUpdateEvent` with `status.message`, the translated `Message` carries the original text parts so receiving agents can directly use the content, and appends a `Part.data` so agents can also inspect the full event envelope (state, task ID, etc.).
+
+`TaskMessageUpdateEvent` is a notification that this agent's task received an external input message from outside the broadcast channel (e.g. a direct `SendMessage` call from another client). It is forwarded as `StreamRequest { message }` with original parts unchanged. The SLIMRPC runtime **MUST NOT** overwrite the `slim-src` field on these items — the message already carries the original sender's identity from when it was delivered to the agent, and replacing it with the agent's SLIM name would misattribute the message. The runtime **MUST** still stamp `slim-peer-task-id` so receivers can identify which peer task received the external input. Receiving agents **MUST NOT** treat a forwarded `TaskMessageUpdateEvent` as agent-generated content.
+
+The `slim-src`, `slim-peer-task-id`, and `slim-peer-state` metadata keys are added to all translated messages per [Section 6](#6-message-attribution).
 
 ### 5.2. `contextId` Rewriting
 
@@ -111,7 +120,7 @@ The SLIMRPC runtime **MUST NOT** deliver a translated `StreamRequest` back to th
 
 The SLIMRPC layer populates attribution metadata from the SLIM transport `src` field before delivering any item to a receiving member. Application code **MUST NOT** set or override these keys.
 
-**`slim-src`** **MUST** be present on every `StreamRequest` item delivered to a receiving member, regardless of whether the item originates from the initiating client or is translated from a peer agent's `StreamResponse`.
+**`slim-src`** **MUST** be present on every `StreamRequest` item delivered to a receiving member. For client-originated items and all translated peer items except `TaskMessageUpdateEvent`, the runtime sets `slim-src` to the SLIM name of the originating sender. For translated `TaskMessageUpdateEvent` items, `slim-src` **MUST** be preserved from the original message (the external client that sent the out-of-band input) and **MUST NOT** be replaced with the relay agent's SLIM name.
 
 **`slim-peer-task-id`** and **`slim-peer-state`** are only meaningful for translated peer items and **MUST NOT** be present on client-originated items:
 

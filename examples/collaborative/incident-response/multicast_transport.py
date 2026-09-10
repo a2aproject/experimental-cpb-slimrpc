@@ -27,6 +27,9 @@ import asyncio
 import uuid
 from collections.abc import AsyncGenerator
 
+from google.protobuf.json_format import MessageToDict
+from google.protobuf.struct_pb2 import Value
+
 import slim_bindings
 from a2a.types.a2a_pb2 import (
     Message,
@@ -48,11 +51,18 @@ def _forward_message(
     msg: Message,
     slim_src: str,
     peer_task_id: str,
+    event=None,
+    media_type: str = "",
     state: TaskState | None = None,
 ) -> StreamRequest:
     forwarded = Message()
     forwarded.CopyFrom(msg)
     forwarded.role = ROLE_USER
+    if event is not None:
+        d = MessageToDict(event, preserving_proto_field_name=True)
+        val = Value()
+        val.struct_value.update(d)
+        forwarded.parts.append(Part(data=val, media_type=media_type))
     forwarded.metadata.fields["slim-src"].string_value = slim_src
     forwarded.metadata.fields["slim-peer-task-id"].string_value = peer_task_id
     if state is not None:
@@ -60,11 +70,21 @@ def _forward_message(
     return StreamRequest(message=forwarded)
 
 
-def _synthetic_message(text: str, slim_src: str, peer_task_id: str, state: TaskState | None = None) -> StreamRequest:
+def _event_data_message(
+    event,
+    media_type: str,
+    slim_src: str,
+    peer_task_id: str,
+    state: TaskState | None = None,
+) -> StreamRequest:
+    """Build a ROLE_USER StreamRequest carrying the serialised proto event as Part.data."""
+    d = MessageToDict(event, preserving_proto_field_name=True)
+    val = Value()
+    val.struct_value.update(d)
     msg = Message(
         message_id=str(uuid.uuid4()),
         role=ROLE_USER,
-        parts=[Part(text=text)],
+        parts=[Part(data=val, media_type=media_type)],
     )
     msg.metadata.fields["slim-src"].string_value = slim_src
     msg.metadata.fields["slim-peer-task-id"].string_value = peer_task_id
@@ -168,8 +188,9 @@ class MulticastBroadcastTransport:
 
                 if response.HasField("task"):
                     task = response.task
-                    forwarded = _synthetic_message(
-                        text=f"Agent {slim_name} started task {task.id}",
+                    forwarded = _event_data_message(
+                        task,
+                        "application/vnd.a2a.task+json",
                         slim_src=slim_name,
                         peer_task_id=task.id,
                     )
@@ -181,22 +202,29 @@ class MulticastBroadcastTransport:
                             msg=update.status.message,
                             slim_src=slim_name,
                             peer_task_id=peer_task_id,
+                            event=update,
+                            media_type="application/vnd.a2a.task-status-update+json",
                             state=update.status.state,
                         )
                     else:
-                        forwarded = _synthetic_message(
-                            text=f"Agent {slim_name} state: {_task_state_name(update.status.state)}",
+                        forwarded = _event_data_message(
+                            update,
+                            "application/vnd.a2a.task-status-update+json",
                             slim_src=slim_name,
                             peer_task_id=peer_task_id,
                             state=update.status.state,
                         )
 
                 elif response.HasField("message_update"):
-                    forwarded = _forward_message(
-                        msg=response.message_update.message,
-                        slim_src=slim_name,
-                        peer_task_id=peer_task_id,
-                    )
+                    update = response.message_update
+                    # Preserve the original slim-src from the out-of-band client;
+                    # only stamp slim-peer-task-id so agents know which peer task
+                    # received the external input.
+                    fwd_msg = Message()
+                    fwd_msg.CopyFrom(update.message)
+                    fwd_msg.role = ROLE_USER
+                    fwd_msg.metadata.fields["slim-peer-task-id"].string_value = peer_task_id
+                    forwarded = StreamRequest(message=fwd_msg)
 
                 elif response.HasField("artifact_update"):
                     forwarded = StreamRequest(artifact_update=response.artifact_update)
