@@ -1,28 +1,18 @@
 # SLIMRPC Broadcast Live Messaging
 
-This document specifies the **broadcast live messaging** extension for the [SLIMRPC Multicast RPC specification](slimrpc-multicast.md), which is itself built on the [SLIMRPC custom protocol binding](slimrpc.md). It defines how a SLIM group channel can be used as a shared real-time channel in which every `SendLiveMessage` event — from any participant — is delivered to all other participants, enabling collaborative multi-agent workflows.
+This document specifies how the [A2A Broadcast Live](a2a-broadcast-live.md) extension is implemented over SLIMRPC. All generic session semantics, stream translation rules, attribution model, and error handling are defined in the base spec. This document adds SLIM-specific transport mechanics and metadata key mappings.
+
+For a transport-neutral description of the protocol, see [A2A Broadcast Live Messaging](a2a-broadcast-live.md).
 
 ## 1. Overview
 
-[Multicast `SendLiveMessage`](slimrpc-multicast.md#8-multicast-sendlivemessage-bidirectional-streaming) follows a fan-out model: a single initiating client sends `StreamRequest` items to all agents, and each agent's `StreamResponse` stream flows back to the initiating client only. Agents are unaware of one another's output.
+SLIMRPC implements broadcast live messaging on SLIM group channels. The `slimrpc-live-routing: broadcast` metadata key is the binding-defined signal that activates broadcast mode on a `SendLiveMessage` call (see [Section 3.1](#31-routing-signal)).
 
-Broadcast live messaging changes only the routing: when the `slimrpc-live-routing: broadcast` metadata key is present on the `SendLiveMessage` call, SLIM delivers every `StreamResponse` item from any channel member to **all** other channel members. Combined with the A2A 1.1 `timeline` semantics, this produces a group-chat model:
-
-- Each agent creates its own `Task` for the session, identified by the shared `context_id`
-- Every message sent by any participant — client prompts, agent status updates, artifact events — is received by all other participants on their inbound `StreamRequest` stream
-- Each agent records peer messages as `TimelineEntry` items in its own task's timeline, so a peer's output becomes a recorded input in that agent's interaction history
-- Agents decide independently whether to respond to any given received message, exactly as in a group chat
-
-Use cases include:
-
-- A pipeline of specialised agents where each agent's output becomes the next agent's input without a central coordinator
-- Multiple clients observing a shared evolving workspace in real time
-- A coordinating agent that assigns subtasks to peer agents and observes their progress directly on its own task timeline
-- Incident response or planning sessions where humans and agents collaborate on a shared channel
+Three transport modes are available, corresponding to the two models defined in the base spec (see [Section 3.3](#33-transport-modes)).
 
 ## 2. SLIM Group Channels
 
-Broadcast live messaging uses the same SLIM group channel mechanism as multicast RPC (see [Section 2 of the Multicast RPC spec](slimrpc-multicast.md#2-slim-group-channels)). No new channel type or naming convention is required.
+SLIMRPC broadcast live messaging uses the same SLIM group channel mechanism as multicast RPC (see [Section 2 of the Multicast RPC spec](slimrpc-multicast.md#2-slim-group-channels)). No new channel type or naming convention is required.
 
 **Examples:**
 
@@ -31,106 +21,44 @@ Broadcast live messaging uses the same SLIM group channel mechanism as multicast
 | `mydomain/demo/planning-session` | A collaborative planning session for a group of agents |
 | `mydomain/production/incident-response` | A shared incident response channel for agents and human clients |
 
-## 3. Protocol Requirements
+## 3. SLIMRPC Binding
 
-- **Underlying mechanism:** SLIM group channels
-- **Prerequisites:** All participating members **MUST** support A2A 1.1 or later and the base SLIMRPC binding (`https://a2a-protocol.org/bindings/experimental-slimrpc/v1`); SLIM group channel support as described in [slimrpc-multicast.md](slimrpc-multicast.md) is also required
-- **Method:** `SendLiveMessage` as defined in A2A 1.1; no new RPC method is introduced
-- **Routing signal:** `slimrpc-live-routing: broadcast` in SLIMRPC call metadata; absent = standard multicast (see [slimrpc.md reserved metadata keys](slimrpc.md#3-service-parameter-transmission))
-- **Message attribution:** the SLIMRPC layer **MUST** populate the `slim-src` key in `StreamRequest` metadata on every item delivered to a receiving member, identifying the original sender (see [Section 6](#6-message-attribution))
+### 3.1. Routing Signal
 
-## 4. Session Model
+`slimrpc-live-routing: broadcast` in the SLIMRPC call metadata activates broadcast mode on a `SendLiveMessage` call. This is the binding-defined activation signal required by [Section 4.1 of the base spec](a2a-broadcast-live.md#41-session-initiation). When absent, the call follows standard multicast routing (see [slimrpc-multicast.md](slimrpc-multicast.md)).
 
-### 4.1. Session Initiation
+### 3.2. Metadata Key Names
 
-Any channel member **MAY** initiate a broadcast live session by invoking `SendLiveMessage` on the SLIM group channel with `slimrpc-live-routing: broadcast` in the call metadata. The SLIM runtime delivers the call to all current channel members.
+The following table maps the abstract attribution fields from [Section 5.2 of the base spec](a2a-broadcast-live.md#52-message-attribution) to their SLIMRPC metadata key names:
 
-Each agent creates its own `Task` independently and assigns its own server-generated `contextId` per the A2A specification (see [Section 3.4.1](https://a2a-protocol.org/v1.1.0/specification/#341-context-identifier-semantics)). Agent-generated `contextId` values are opaque to other participants and are not required to be the same across agents.
-
-Each agent **MUST** create a `Task` in response to the `SendLiveMessage` and return the initial `Task` object as the first `StreamResponse`. Because SLIM broadcasts this response to all channel members, every participant learns every agent's task ID and `contextId` without additional signalling.
-
-Because a broadcast `SendLiveMessage` is delivered to all agents simultaneously, `contextId` rewriting is performed on the **receive side**: each agent's SLIMRPC transport injects the correct `contextId` into every inbound `StreamRequest` — whether it originates from the client or from a translated peer `StreamResponse` — before passing it to the agent executor.
-
-For new sessions each agent's transport caches its own `contextId` from the `Task` it creates at session initiation. If the client wants all agents to continue a prior context, it **MAY** include a `slimrpc-context-map` metadata entry on the initial `SendLiveMessage` call (as defined in [Section 8.3 of the Multicast RPC spec](slimrpc-multicast.md#83-task-management)); each agent's transport reads its own entry from this map and caches it instead.
-
-The `slim-peer-task-id` metadata key (see [Section 6](#6-message-attribution)) allows subsequent events to be attributed to the correct per-agent task.
-
-### 4.2. The Group Chat Model
-
-Once a session is established, the channel operates as a group chat:
-
-- Any participant — client or agent — **MAY** send a `StreamRequest` item at any time
-- Every `StreamRequest` item sent by the initiating client is broadcast to all agents
-- Every `StreamResponse` item sent by any agent is broadcast to all other channel members (clients and agents)
-- Each receiving member's SLIMRPC runtime translates incoming `StreamResponse` items from peers into `StreamRequest` items on its inbound stream (see [Section 5](#5-stream-translation))
-- Participants **SHOULD** record received peer messages in their own task's timeline (see [Section 4.3](#43-timeline-integration))
-- Participants **MAY** choose to act on or ignore any received message according to their own logic; no response is required
-
-A participant's own reflected messages **MUST NOT** be delivered back to that participant (no echo).
-
-### 4.3. Timeline Integration
-
-The A2A 1.1 `timeline` field on `Task` is the coherent, generation-ordered interaction record (see [Task Timeline Semantics](https://a2a-protocol.org/v1.1.0/specification/#328-task-timeline-semantics)). In broadcast live sessions, each agent **MUST** append received peer messages to its own task's `timeline` as `TimelineEntry(Message)` items. This produces a per-agent record of the full group conversation, in which peer outputs are literally recorded as inputs in the timeline — exactly as if they had been sent by a client in a standard point-to-point interaction.
-
-The agent **SHOULD** preserve the `slim-src` metadata key on `TimelineEntry(Message)` items appended from peer messages, so the sender is identifiable in the persisted timeline.
-
-**Effect on `generation`:** each appended `TimelineEntry` advances the task's `generation` by 1, enabling downstream subscribers to detect peer-message arrivals as generation gaps and reconcile via `GetTask` (standard ADR-002 behaviour).
-
-
-## 5. Stream Translation
-
-The SLIMRPC runtime is responsible for translating `StreamResponse` items received from peer agents via SLIM broadcast into `StreamRequest` items on the receiving agent's inbound stream. Application code sees a unified inbound stream mixing client prompts and translated peer events; it does not handle the broadcast routing directly.
-
-### 5.1. Translation Rules
-
-**Client-originated `StreamRequest` items** (sent by the initiating client and broadcast to all agents) are delivered directly to each agent's inbound stream without structural modification. The SLIMRPC runtime **MUST** inject `slim-src` from the SLIM transport `src` field before delivery so that agents can identify the sender.
-
-**Peer `StreamResponse` items** (emitted by an agent and broadcast to all other channel members) are translated into `StreamRequest` items before delivery:
-
-| Peer sends (`StreamResponse`) | Translated to (`StreamRequest`) | Parts |
+| Abstract field | SLIMRPC metadata key | Value format |
 | :--- | :--- | :--- |
-| Initial `Task` | `StreamRequest { message }` | 1× `Part.data` (Task JSON) |
-| `TaskStatusUpdateEvent` with `status.message` | `StreamRequest { message }` | Original `status.message` parts + appended `Part.data` (TaskStatusUpdateEvent JSON) |
-| `TaskStatusUpdateEvent` without `status.message` | `StreamRequest { message }` | 1× `Part.data` (TaskStatusUpdateEvent JSON) |
-| `TaskArtifactUpdateEvent` | `StreamRequest { artifact_update }` (unchanged) | — |
-| `TaskMessageUpdateEvent` | `StreamRequest { message }` (original parts unchanged) | — |
+| sender (`broadcast-src`) | `slim-src` | SLIM name in `domain/namespace/service` format |
+| peer task ID (`broadcast-peer-task-id`) | `slim-peer-task-id` | A2A task ID string |
+| peer state (`broadcast-peer-state`) | `slim-peer-state` | `TaskState` name (lower-case, no `TASK_STATE_` prefix) |
+| Context map | `slimrpc-context-map` | JSON object `{ "SLIM name" → "contextId" }` |
 
-For `Task` and `TaskStatusUpdateEvent` items, the `Part.data` field is a `google.protobuf.Value` containing the JSON-serialised proto event with `preserving_proto_field_name=True` (snake_case field names). The `Part.media_type` **MUST** be set to identify the event type:
+`slim-src` is populated from the SLIM transport `src` field. Application code **MUST NOT** set or override any of these keys.
 
-| Event | `Part.media_type` |
-| :--- | :--- |
-| Initial `Task` | `application/vnd.a2a.task+json` |
-| `TaskStatusUpdateEvent` | `application/vnd.a2a.task-status-update+json` |
+### 3.3. Transport Modes
 
-For `TaskStatusUpdateEvent` with `status.message`, the translated `Message` carries the original text parts so receiving agents can directly use the content, and appends a `Part.data` so agents can also inspect the full event envelope (state, task ID, etc.).
+SLIMRPC supports three transport modes. All satisfy the base spec requirements; they differ in where fan-out and relay are performed.
 
-`TaskMessageUpdateEvent` is a notification that this agent's task received an external input message from outside the broadcast channel (e.g. a direct `SendMessage` call from another client). It is forwarded as `StreamRequest { message }` with original parts unchanged. The SLIMRPC runtime **MUST NOT** overwrite the `slim-src` field on these items — the message already carries the original sender's identity from when it was delivered to the agent, and replacing it with the agent's SLIM name would misattribute the message. The runtime **MUST** still stamp `slim-peer-task-id` so receivers can identify which peer task received the external input. Receiving agents **MUST NOT** treat a forwarded `TaskMessageUpdateEvent` as agent-generated content.
-
-The `slim-src`, `slim-peer-task-id`, and `slim-peer-state` metadata keys are added to all translated messages per [Section 6](#6-message-attribution).
-
-### 5.2. `contextId` Rewriting
-
-Before passing a translated `StreamRequest` to the receiving agent's executor, the SLIMRPC runtime **MUST** inject the agent's cached `contextId` (acquired at session initiation — see [Section 4.1](#41-session-initiation)) into the message. This ensures that peer-originated messages arrive with the correct `contextId` for that agent's task, exactly as if they had been sent by a direct client.
-
-### 5.3. Echo Suppression
-
-The SLIMRPC runtime **MUST NOT** deliver a translated `StreamRequest` back to the member that originally sent the corresponding `StreamResponse`. SLIM `src`-based identity is used to suppress echoes.
-
-## 6. Message Attribution
-
-The SLIMRPC layer populates attribution metadata from the SLIM transport `src` field before delivering any item to a receiving member. Application code **MUST NOT** set or override these keys.
-
-**`slim-src`** **MUST** be present on every `StreamRequest` item delivered to a receiving member. For client-originated items and all translated peer items except `TaskMessageUpdateEvent`, the runtime sets `slim-src` to the SLIM name of the originating sender. For translated `TaskMessageUpdateEvent` items, `slim-src` **MUST** be preserved from the original message (the external client that sent the out-of-band input) and **MUST NOT** be replaced with the relay agent's SLIM name.
-
-**`slim-peer-task-id`** and **`slim-peer-state`** are only meaningful for translated peer items and **MUST NOT** be present on client-originated items:
-
-| Metadata Key | Type | Present on | Description |
+| Mode | Base spec model | Mechanism | Relay |
 | :--- | :--- | :--- | :--- |
-| `slim-src` | string | All items | SLIM name of the originating sender in `domain/namespace/service` format |
-| `slim-peer-task-id` | string | Translated peer items only | Task ID of the peer agent that produced this event |
-| `slim-peer-state` | string | Translated `TaskStatusUpdateEvent` items only | Task state of the peer at the time of the event (`working`, `completed`, `failed`, etc.) |
+| `nstreams` | [Relay model](a2a-broadcast-live.md#21-relay-model) | N independent `SRPCTransport` point-to-point streams; relay translates peer events and injects them via `SendMessage(context_id)`. Any A2A 1.0+ transport with task continuation support is sufficient for this model. | Application layer |
+| `multicast` | [Relay model](a2a-broadcast-live.md#21-relay-model) with native fan-out | `SRPCMulticastTransport` on a SLIM GROUP channel; SLIM delivers fan-out natively, relay re-sends translated peer responses back into the same group stream. | Application layer |
+| `native-broadcast` | [Native broadcast model](a2a-broadcast-live.md#22-native-broadcast-model) | `SRPCMulticastTransport` on a SLIM GROUP channel with shared-responses enabled; SLIM delivers each agent's `StreamResponse` to all other group members natively. Agents **MUST** be started with `Server.new_with_shared_responses_and_connection`. | None (SLIM handles it) |
 
-Recipients **MUST** use `metadata["slim-src"]` for sender attribution at the A2A layer.
+`native-broadcast` is the closest implementation to the broadcast-live spec's intent: SLIM handles both fan-out and peer response routing end-to-end with no application-layer relay.
+
+### 3.4. Session Continuation
+
+To continue an existing context, the initiating client **MAY** include a `slimrpc-context-map` metadata entry on the initial `SendLiveMessage` call. The value is a JSON object mapping each agent's SLIM name to its `contextId`. Each agent's SLIMRPC transport reads its own entry from this map, caches the `contextId`, and uses it for session ID rewriting (see [Section 5.3 of the base spec](a2a-broadcast-live.md#53-session-id-rewriting)).
+
+## 4. Message Attribution
+
+The full attribution model is defined in [Section 5.2 of the base spec](a2a-broadcast-live.md#52-message-attribution). SLIMRPC populates `slim-src` from the SLIM transport `src` field; `slim-peer-task-id` and `slim-peer-state` are stamped by the SLIMRPC runtime on translated peer items.
 
 **Example — client-originated item:**
 
@@ -146,52 +74,11 @@ slim-peer-task-id: task-7f3c1b
 slim-peer-state: working
 ```
 
-## 7. Message Flows
+Recipients **MUST** use `metadata["slim-src"]` for sender attribution at the A2A layer.
 
-SLIM transport-level operations (channel creation, member invitations, join acknowledgements) are omitted for brevity.
+## 5. Agent Card Declaration
 
-### 7.1. Session Initiation and Task Creation
-
-A client initiates the session. All agents create tasks and announce them. All participants receive all task announcements.
-
-```
-Client          Channel         Agent A         Agent B
-  |               |               |               |
-  |-SendLiveMsg-->|               |               |  (slimrpc-live-routing: broadcast)
-  |               |-SendLiveMsg-->|               |  (context_id=ctx-1)
-  |               |-SendLiveMsg------------------>|
-  |               |               |               |
-  |               |<--[Task A]----|               |  (Agent A: initial Task)
-  |<--[Task A]----|               |               |
-  |               |--[Task A announcement]-------->|  (translated StreamRequest)
-  |               |               |               |
-  |               |<--[Task B]---------------------|  (Agent B: initial Task)
-  |<--[Task B]----|               |               |
-  |               |--[Task B announcement]-------->|  (translated StreamRequest)
-```
-
-### 7.2. Agent-to-Agent Messaging
-
-Agent A sends a status update with a message. All channel members receive it. Agent B acts on it and responds; its response is likewise broadcast.
-
-```
-Client          Channel         Agent A         Agent B
-  |               |               |               |
-  |               |<--[StatusEvt]-|               |  (Agent A: status update with message)
-  |<--[StatusEvt]-|slim-src=AgentA|               |
-  |               |--[translated StreamReq]------->|  (Agent B receives peer message)
-  |               |               |               |
-  |               |<--------[StatusEvt]-----------|  (Agent B: responds)
-  |<--[StatusEvt]-|slim-src=AgentB|               |
-  |               |--[translated StreamReq]------->|  (Agent A receives peer message)
-```
-
-Agent A and Agent B each append the other's message as `TimelineEntry(Message)` in their own task timeline.
-
-
-## 8. Agent Card Declaration
-
-Agents that support broadcast live messaging **MUST** declare this using the A2A extension mechanism. The extension URI for this specification is:
+Agents that support SLIMRPC broadcast live messaging **MUST** declare this using the A2A extension mechanism (see [Section 3 of the base spec](a2a-broadcast-live.md#3-extension-declaration)). The extension URI for the SLIMRPC profile is:
 
 ```
 https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/broadcast-live/v1
@@ -231,39 +118,32 @@ This URI **MUST** be declared in `capabilities.extensions` in the agent's Agent 
 
 Clients **SHOULD** verify that all target agents declare this extension URI before initiating a broadcast live session. Agents that do not declare the extension **SHOULD NOT** be invited into a broadcast live session.
 
-## 9. Channel Establishment
+## 6. Channel Establishment
 
 1. **Create a group channel** with a SLIM name of the client's choosing, following the `domain/namespace/channel-name` format
 2. **Invite members** into the group channel using each agent's and additional client's individual SLIM names (see [Section 6 of the Multicast RPC spec](slimrpc-multicast.md#6-sending-a-multicast-request) for the invitation procedure)
 3. **Initiate the session** by invoking `SendLiveMessage` on the group channel with `slimrpc-live-routing: broadcast` in the SLIMRPC call metadata
 4. **Collect initial tasks:** receive the first `StreamResponse` from each agent, which carries the initial `Task`; record each agent's SLIM name, task ID, and `contextId` from these responses and build the `slimrpc-context-map` for all subsequent requests
 
-## 10. Channel Lifecycle
+## 7. Channel Lifecycle
 
-### 10.1. Creation
+### 7.1. Creation
 
 The initiating client creates the SLIM group channel and invites all intended participants at the SLIM transport level before sending `SendLiveMessage`.
 
-### 10.2. Membership Changes
+### 7.2. Membership Changes
 
-SLIMRPC does not support adding new participants to an active `SendLiveMessage` session. Inviting a new member to the SLIM group channel does not automatically enroll them in the live session. To include new participants, the initiating client **MUST** cancel the active session (see Section 10.3), invite the new members at the SLIM transport level, and restart the session with all intended participants from the beginning.
+SLIMRPC does not support adding new participants to an active `SendLiveMessage` session. Inviting a new member to the SLIM group channel does not automatically enroll them in the live session. To include new participants, the initiating client **MUST** cancel the active session (see Section 7.3), invite the new members at the SLIM transport level, and restart the session with all intended participants from the beginning.
 
 When a member is removed from the channel, its `SendLiveMessage` stream **MUST** be terminated. Other members' streams and tasks are unaffected.
 
-### 10.3. Teardown
+### 7.3. Teardown
 
 When the group channel is closed, all open `SendLiveMessage` streams **MUST** be terminated. Agents **SHOULD** transition active tasks to a terminal state (`canceled`) and release associated resources.
 
-## 11. Error Handling
+## 8. Error Handling
 
-Error responses use the SLIMRPC status codes defined in [Section 6 of the binding spec](slimrpc.md#6-error-handling). No additional error codes are defined by this specification.
-
-The following are member-level failures and **MUST NOT** terminate the channel or affect other members:
-
-- A member's `SendLiveMessage` stream terminates with an error
-- A member's task fails (the `Task` transitions to `failed`)
-- A member does not respond to a received message (selective participation is valid)
-- A member is removed from the channel while a session is active
+Error responses use the SLIMRPC status codes defined in [Section 6 of the binding spec](slimrpc.md#6-error-handling). Member-level failure rules are defined in [Section 7 of the base spec](a2a-broadcast-live.md#7-error-handling).
 
 The following are channel-level failures:
 
