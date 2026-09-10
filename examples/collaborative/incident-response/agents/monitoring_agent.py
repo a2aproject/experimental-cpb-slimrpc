@@ -19,6 +19,7 @@ agent publishes an ALERT status update. The BroadcastLiveClient forwards that
 update to all other agents as a StreamRequest so they can react.
 """
 
+import argparse
 import asyncio
 
 from a2a.helpers.proto_helpers import new_task_from_user_message
@@ -110,13 +111,18 @@ def build_agent_card():
     )
 
 
-async def main():
+async def main(shared_responses: bool = False) -> None:
     await start_agent(
         slim_name=SLIM_NAME,
         agent_card=build_agent_card(),
         agent_executor=MonitoringAgentExecutor(),
+        shared_responses=shared_responses,
     )
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--shared-responses", action="store_true", default=False,
+                        help="Enable native broadcast-live mode (SRPCSharedHandler)")
+    args = parser.parse_args()
+    asyncio.run(main(shared_responses=args.shared_responses))

@@ -831,22 +831,12 @@ wheels = [
 [[package]]
 name = "slim-bindings"
 version = "2.1.2"
-source = { registry = "https://pypi.org/simple" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/ee/eae32995a2fd83c177621c47f3c04c6bfd0c39adb7e17721c822bf65ee22/slim_bindings-2.1.2-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:886d1253caba9e40f503bf68354697f1d6811611ac14e146054d5abb1ce5e54b", size = 22261792, upload-time = "2026-08-28T11:29:11.201Z" },
-    { url = "https://files.pythonhosted.org/packages/00/0e/4fc40e9141433431ec2ed1a19118c4cc45aedba25d77bd98d2568c465c63/slim_bindings-2.1.2-py3-none-macosx_11_0_arm64.whl", hash = "sha256:d7115a6b55d119835490a44532acd714755d40599fac35146a18eb8297c2f0db", size = 21545317, upload-time = "2026-08-28T11:29:14.841Z" },
-    { url = "https://files.pythonhosted.org/packages/29/90/98d461c84ee2398bab1a2ee845447d44a2d5916ee3c2f9a4e8f279458b4c/slim_bindings-2.1.2-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:592de0aa2f1d5236ff9ce346e349319da1e28174257e53ce15a24a13af653649", size = 22613715, upload-time = "2026-08-28T11:29:18.54Z" },
-    { url = "https://files.pythonhosted.org/packages/48/52/d2ed658abbaa7d28c4f5187939721c36942863cbe3cafdbf1e3dfab1eebe/slim_bindings-2.1.2-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:c38b3704108d3902976dbb7cef2f2aa0323dd5bca8baeb5cf168ff141ed5be20", size = 23341222, upload-time = "2026-08-28T11:29:22.385Z" },
-    { url = "https://files.pythonhosted.org/packages/fe/ca/198f81259aba162f70e94a41957a7be59ce7811ea3eee74430106e126d56/slim_bindings-2.1.2-py3-none-musllinux_1_2_aarch64.whl", hash = "sha256:7962181ff8fc799d16b9bfab5b9745bda43c85c1460ff1af332e7e5078a44052", size = 22613328, upload-time = "2026-08-28T11:29:26.299Z" },
-    { url = "https://files.pythonhosted.org/packages/37/a1/572aebf0f90d346f1a93b9775ca886435d3d498c0366fbc89e14caeda9a4/slim_bindings-2.1.2-py3-none-musllinux_1_2_x86_64.whl", hash = "sha256:8aa54a17de01ed38eed9e7d4bff147b63227cdb1090dc1576bd16583b3e6b33b", size = 23345645, upload-time = "2026-08-28T11:29:30.52Z" },
-    { url = "https://files.pythonhosted.org/packages/73/2a/3066d3ab9486164f46b0719fcb5e981cade6d836f2ee71d785b838d75041/slim_bindings-2.1.2-py3-none-win_amd64.whl", hash = "sha256:994b9a4684e3ab0509279396ed1badbe1091254ca0e2b7709179a595519cad34", size = 20770507, upload-time = "2026-08-28T11:29:34.104Z" },
-    { url = "https://files.pythonhosted.org/packages/ba/b9/0ab0f2776faa48427a319b567d7258bd166a0d87eba7a0556f07e50e7202/slim_bindings-2.1.2-py3-none-win_arm64.whl", hash = "sha256:e5f3dff65b37428be7b252047da685896c927a6c403ee457ad74ede4324ad82c", size = 19367663, upload-time = "2026-08-28T11:29:37.578Z" },
-]
+source = { git = "https://github.com/agntcy/slim-bindings?subdirectory=python&branch=feat%2Fslimrpc-shared-responses#7664bd21ad957effb2c6c20ec4d6773622201eef" }
 
 [[package]]
 name = "slima2a"
 version = "0.7.0"
-source = { git = "https://github.com/agntcy/slim-a2a-python?branch=feat%2Fsend-live-message#1888e4fefbe1310907c1aaf3cfa75ebce0fa0259" }
+source = { git = "https://github.com/agntcy/slim-a2a-python?branch=feat%2Fsend-live-message#3ba3592f4726ab06aeeb5b361f5164c1ad3c3bed" }
 dependencies = [
     { name = "a2a-sdk", extra = ["sqlite", "telemetry"] },
     { name = "slim-bindings" },

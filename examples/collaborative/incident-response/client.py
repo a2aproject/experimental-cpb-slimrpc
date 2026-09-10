@@ -15,16 +15,18 @@
 """Incident-response broadcast live session client.
 
 Connects to agents over SLIM and initiates a SendLiveMessage broadcast session.
-Two transport modes are available via --transport:
+Three transport modes are available via --transport:
 
-  nstreams   (default) NStreamsBroadcastTransport — N point-to-point SRPCTransport
-             instances, application-layer fan-out and cross-agent relay.
+  nstreams          (default) NStreamsBroadcastTransport — N point-to-point SRPCTransport
+                    instances, application-layer fan-out and cross-agent relay.
 
-  multicast  MulticastBroadcastTransport — single SRPCMulticastTransport on a
-             SLIM GROUP channel; SLIM delivers fan-out natively and the relay
-             re-sends peer responses back into the same group stream.
+  multicast         MulticastBroadcastTransport — single SRPCMulticastTransport on a
+                    SLIM GROUP channel; SLIM delivers fan-out natively and the relay
+                    re-sends peer responses back into the same group stream.
 
-Both expose the same send_live_message() interface; agent code is identical.
+  native-broadcast  SRPCMulticastTransport on a SLIM GROUP channel with shared-responses
+                    enabled; SLIM handles broadcast routing natively end-to-end with no
+                    application-layer relay. Requires agents started with --shared-responses.
 """
 
 import argparse
@@ -89,7 +91,25 @@ async def main(transport_mode: str = "nstreams") -> None:
         secret=SLIM_SECRET,
     )
 
-    if transport_mode == "multicast":
+    if transport_mode == "native-broadcast":
+        from slima2a import slimrpc_group_shared_channel_factory
+        from slima2a.client_transport import SRPCMulticastTransport
+
+        factory = slimrpc_group_shared_channel_factory(local_app, conn_id)
+        channel = factory([f"{NAMESPACE}/{GROUP}/{name}" for name in AGENT_NAMES])
+        _transport = SRPCMulticastTransport(channel)
+
+        async def send_live_message(self, request_stream, metadata=None):
+            async for source, response in _transport.send_live_message(
+                request_stream, context=None
+            ):
+                slim_name = "/".join(source.source.components())
+                yield slim_name, response
+
+        broadcast_client = type("_NativeBroadcast", (), {"send_live_message": send_live_message})()
+        log("client", "transport: native-broadcast (SLIM shared-responses GROUP channel)")
+
+    elif transport_mode == "multicast":
         from multicast_transport import MulticastBroadcastTransport
         from slima2a.client_transport import slimrpc_group_channel_factory
 
@@ -192,9 +212,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Incident-response broadcast live client")
     parser.add_argument(
         "--transport",
-        choices=["nstreams", "multicast"],
+        choices=["nstreams", "multicast", "native-broadcast"],
         default="nstreams",
-        help="Transport mode: nstreams (N point-to-point streams) or multicast (GROUP channel)",
+        help="Transport mode: nstreams, multicast, or native-broadcast (requires --shared-responses agents)",
     )
     args = parser.parse_args()
     asyncio.run(main(transport_mode=args.transport))

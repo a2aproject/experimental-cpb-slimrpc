@@ -18,7 +18,11 @@
 #      uv sync
 #
 # Usage:
-#   ./run.sh
+#   ./run.sh [--transport nstreams|multicast|native-broadcast]
+#
+#   --transport native-broadcast starts agents in shared-responses mode (required
+#   for SLIM to deliver peer StreamResponses back to agents natively).
+#   Defaults to native-broadcast.
 #
 # Output:
 #   Each agent prints its received messages and responses to stdout, prefixed
@@ -38,18 +42,26 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-echo "Starting agents..."
+TRANSPORT="${1:---transport native-broadcast}"
 
-uv run python -m agents.monitoring_agent &
+# Pass --shared-responses to agents when using native-broadcast mode.
+AGENT_FLAGS=""
+if [[ "$TRANSPORT" == *"native-broadcast"* ]]; then
+    AGENT_FLAGS="--shared-responses"
+fi
+
+echo "Starting agents (transport: ${TRANSPORT})..."
+
+uv run python -m agents.monitoring_agent $AGENT_FLAGS &
 AGENT_PIDS=($!)
 
-uv run python -m agents.log_agent &
+uv run python -m agents.log_agent $AGENT_FLAGS &
 AGENT_PIDS+=($!)
 
-uv run python -m agents.diagnostics_agent &
+uv run python -m agents.diagnostics_agent $AGENT_FLAGS &
 AGENT_PIDS+=($!)
 
-uv run python -m agents.remediation_agent &
+uv run python -m agents.remediation_agent $AGENT_FLAGS &
 AGENT_PIDS+=($!)
 
 # Wait for all agents to connect and subscribe.
@@ -57,7 +69,7 @@ echo "Waiting for agents to connect..."
 sleep 2
 
 echo "Running client..."
-uv run python client.py --transport multicast
+uv run python client.py $TRANSPORT
 
 echo ""
 echo "Done."

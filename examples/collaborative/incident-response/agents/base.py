@@ -31,9 +31,10 @@ from a2a.types.a2a_pb2 import (
 )
 
 from slima2a import setup_slim_client
-from slima2a.handler import SRPCHandler
+from slima2a.handler import SRPCHandler, SRPCSharedHandler
 from slima2a.types.v1.a2a_pb2_slimrpc import (  # type: ignore[import]
     add_A2AServiceServicer_to_server as _add_a2a,
+    add_A2AServiceServicer_to_server_shared as _add_a2a_shared,
 )
 
 SLIM_URL = "http://localhost:46357"
@@ -135,8 +136,14 @@ async def start_agent(
     agent_executor: AgentExecutor,
     slim_url: str = SLIM_URL,
     secret: str = SLIM_SECRET,
+    shared_responses: bool = False,
 ) -> None:
-    """Connect to SLIM, register A2A service handler, and start serving."""
+    """Connect to SLIM, register A2A service handler, and start serving.
+
+    Pass shared_responses=True for native broadcast-live mode: registers both
+    SRPCHandler and SRPCSharedHandler so the agent accepts both point-to-point
+    and broadcast-live SendLiveMessage calls.
+    """
     _service, local_app, local_name, conn_id = await setup_slim_client(
         namespace=NAMESPACE,
         group=GROUP,
@@ -151,10 +158,16 @@ async def start_agent(
         task_store=InMemoryTaskStore(),
         agent_card=agent_card,
     )
-    srpc_handler = SRPCHandler(agent_card, request_handler)
 
-    server = slim_bindings.Server.new_with_connection(local_app, local_name, conn_id)
-    _add_a2a(srpc_handler, server)
+    if shared_responses:
+        server = slim_bindings.Server.new_with_shared_responses_and_connection(
+            local_app, local_name, conn_id
+        )
+        _add_a2a(SRPCHandler(agent_card, request_handler), server)
+        _add_a2a_shared(SRPCSharedHandler(agent_card, request_handler), server)
+    else:
+        server = slim_bindings.Server.new_with_connection(local_app, local_name, conn_id)
+        _add_a2a(SRPCHandler(agent_card, request_handler), server)
 
     log(slim_name, f"ready at {NAMESPACE}/{GROUP}/{slim_name}")
     await server.serve_async()

@@ -156,12 +156,22 @@ uv run python -m agents.diagnostics_agent
 uv run python -m agents.remediation_agent
 
 # Terminal 5: run the client (after agents are ready)
-uv run python client.py                     # default: nstreams transport
-uv run python client.py --transport nstreams   # explicit nstreams
-uv run python client.py --transport multicast  # SLIM GROUP channel
+uv run python client.py                              # default: nstreams transport
+uv run python client.py --transport nstreams         # explicit nstreams
+uv run python client.py --transport multicast        # SLIM GROUP channel, app-layer relay
+uv run python client.py --transport native-broadcast # SLIM native shared-responses (no relay)
 ```
 
-The `--transport` flag selects between two broadcast implementations that produce identical behaviour; see [Transport modes](#transport-modes) below.
+For `native-broadcast`, agents must be started with `--shared-responses`:
+
+```bash
+uv run python -m agents.monitoring_agent --shared-responses
+uv run python -m agents.log_agent --shared-responses
+# ... etc
+uv run python client.py --transport native-broadcast
+```
+
+The `--transport` flag selects between three broadcast implementations; see [Transport modes](#transport-modes) below.
 
 ## File layout
 
@@ -185,14 +195,16 @@ incident-response/
 
 Both transport modules implement the same interface and produce identical session behaviour. The difference is how fan-out and relay are implemented:
 
-| | `nstreams` (default) | `multicast` |
-| :--- | :--- | :--- |
-| **SLIM channels** | N point-to-point `SRPCTransport` instances | 1 `SRPCMulticastTransport` on a GROUP channel |
-| **Client fan-out** | Application loop copies each `StreamRequest` to N per-agent queues | SLIM delivers a single send to all agents natively |
-| **Cross-agent relay** | N `read_agent` tasks, one queue per agent | Single relay loop; re-sends forwarded items into the same group stream |
-| **Echo suppression** | Application-level (`if other_name != slim_name`) | Agents' own `sender != FULL_SLIM_NAME` guards |
+| | `nstreams` (default) | `multicast` | `native-broadcast` |
+| :--- | :--- | :--- | :--- |
+| **SLIM channels** | N point-to-point `SRPCTransport` instances | 1 `SRPCMulticastTransport` on a GROUP channel | 1 `SRPCMulticastTransport` on a shared-responses GROUP channel |
+| **Client fan-out** | Application loop copies each `StreamRequest` to N per-agent queues | SLIM delivers a single send to all agents natively | SLIM delivers a single send to all agents natively |
+| **Cross-agent relay** | N `read_agent` tasks, one queue per agent | Single relay loop; re-sends forwarded items into the same group stream | None — SLIM delivers each agent's `StreamResponse` back to all other agents natively |
+| **Echo suppression** | Application-level (`if other_name != slim_name`) | Agents' own `sender != FULL_SLIM_NAME` guards | SLIM suppresses echoes at the transport layer |
+| **Agent startup** | Default | Default | Requires `--shared-responses` flag |
+| **Peer event translation** | `nstreams_transport.py` | `multicast_transport.py` | `slima2a` runtime (`_translate_peer_response`) |
 
-The `multicast` mode is the closer match to the SLIMRPC multicast spec: the group channel send genuinely reaches every agent in a single SLIM operation.
+`native-broadcast` is the closest implementation to the SLIMRPC broadcast-live spec: SLIM handles both fan-out and peer response routing with no application-layer relay. Agents must be started with `--shared-responses` to opt into the shared-responses server mode.
 
 ## Key spec concepts demonstrated
 
