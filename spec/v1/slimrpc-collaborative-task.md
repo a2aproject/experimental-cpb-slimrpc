@@ -87,38 +87,53 @@ This is the standard A2A service parameters mechanism (see [SLIMRPC metadata §4
 
 When this URI is absent from `a2a-extensions` on a `SendLiveMessage` call, the call follows standard multicast routing (see [slimrpc-multicast.md](slimrpc-multicast.md)).
 
-## 5. Metadata Key Names
+## 5. Metadata
 
-SLIMRPC uses flat metadata keys rather than nested dictionaries. The metadata fields required by collaborative task sessions are:
+### 5.1. Message Metadata — Sender Identity
 
-| Extension | Field | SLIMRPC metadata key | Value format |
-| :--- | :--- | :--- | :--- |
-| shared-task | `message-sender` | `slim-src` | SLIM name in `domain/namespace/service` format |
-| — | Context map | `slimrpc-context-map` | JSON object `{ "SLIM name" → "contextId" }` |
+Sender identity is carried in `Message.metadata` at the A2A application layer, namespaced under the shared-task extension URI per [Section 5.2 of the base spec](a2a-collaborative-task.md#52-message-attribution):
 
-`slim-src` is populated from the SLIM transport `src` field on group channel items. On point-to-point connections in hybrid mode, the relay populates `slim-src` based on the identity of the participant whose event is being forwarded. Peer task context (`task_id`, `context_id`, state) is carried in `Part.data` on each translated item, not in metadata. Application code **MUST NOT** set or override these keys.
+```json
+{
+  "https://a2a-protocol.org/extensions/shared-task/v1": {
+    "message-sender": "mydomain/demo/agent-a"
+  }
+}
+```
 
-## 6. Session Continuation
+SLIMRPC populates `message-sender` from the SLIM transport `src` field (`slim-src`) on every item delivered via the group channel. On point-to-point connections in hybrid mode, the relay populates `message-sender` with the SLIM name of the originating participant before injecting the item. Application code **MUST NOT** set or override `message-sender`.
 
-To continue an existing context, the initiating client **MAY** include a `slimrpc-context-map` metadata entry on the initial `SendLiveMessage` call. The value is a JSON object mapping each agent's SLIM name to its `contextId`. Each agent's SLIMRPC transport reads its own entry from this map, caches the `contextId`, and uses it for session ID rewriting (see [Section 5.3 of the base spec](a2a-collaborative-task.md#53-session-id-rewriting)).
+Peer task context (`task_id`, `context_id`, state) is carried in `Part.data` on each translated item, not in message metadata.
+
+### 5.2. Session Metadata — Context Map
+
+The `slimrpc-context-map` is SLIMRPC session-level metadata supplied on the initial `SendLiveMessage` call. It is used to continue an existing session; for new sessions it **MUST** be omitted.
+
+The value is a JSON object mapping each agent's SLIM name to its `contextId` from a prior session:
+
+```
+slimrpc-context-map: {"mydomain/demo/agent-a": "ctx-123", "mydomain/demo/agent-b": "ctx-456"}
+```
+
+Each agent's SLIMRPC transport reads its own entry from this map by SLIM name, caches the `contextId`, and uses it for session ID rewriting (see [Section 5.3 of the base spec](a2a-collaborative-task.md#53-session-id-rewriting)). Agents that find no entry for their own SLIM name fall back to caching the `contextId` from the `Task` they create at session initiation.
 
 ## 7. Message Attribution
 
-The full attribution model is defined in [Section 5.2 of the base spec](a2a-collaborative-task.md#52-message-attribution). SLIMRPC populates `slim-src` from the SLIM transport `src` field on every item delivered via the group channel. In hybrid mode, the relay populates `slim-src` with the SLIM name of the originating participant before injecting items across the bridge.
+The full attribution model is defined in [Section 5.2 of the base spec](a2a-collaborative-task.md#52-message-attribution). The SLIMRPC binding maps the SLIM transport `src` field to the `message-sender` field in `Message.metadata` (see [Section 5.1](#51-message-metadata--sender-identity)).
 
-**Example — client-originated item:**
+Recipients **MUST** read sender identity from `Message.metadata` under the shared-task extension key — not from any transport-level field.
 
+**Example — translated peer item as received by an agent:**
+
+```json
+{
+  "metadata": {
+    "https://a2a-protocol.org/extensions/shared-task/v1": {
+      "message-sender": "mydomain/demo/agent-a"
+    }
+  }
+}
 ```
-slim-src: mydomain/demo/client
-```
-
-**Example — translated peer item** (`slim-src` set to the peer agent; peer context in `Part.data`):
-
-```
-slim-src: mydomain/demo/agent-a
-```
-
-Recipients **MUST** use `slim-src` for sender attribution.
 
 ## 8. Agent Card Declaration
 
