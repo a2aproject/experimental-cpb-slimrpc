@@ -12,13 +12,9 @@ The collaborative task extension changes this by introducing a **relay**: an ent
 
 Combined with the [A2A Shared Task](a2a-shared-task.md) extension, agents can identify the sender of each inbound message and apply per-sender logic, even when messages arrive from peer agents rather than human clients.
 
-The resulting topology is relay-defined. Common topologies include:
+The intended topology is **all-to-all (mesh)**: every agent receives every other agent's output, and the client's prompts are delivered to all agents simultaneously. Agents decide independently whether to respond to any given message, exactly as participants in a group chat. Use cases include incident response, planning sessions, and collaborative analysis where agents build on each other's contributions.
 
-- **All-to-all (mesh):** every agent receives every other agent's output, and the client's prompts go to all agents simultaneously. Agents decide independently whether to respond. Use cases include incident response, planning sessions, and collaborative analysis.
-- **Pipeline:** each agent's output is routed only to the next agent in sequence. Use cases include multi-stage processing where each stage refines or transforms the previous one.
-- **Star:** a coordinating agent receives output from all peer agents; peer agents only receive output from the coordinator. Use cases include a supervisor that assigns subtasks and collects results.
-
-Agents do not need to know which topology is in use. They see inbound messages and emit responses; the relay determines delivery.
+The relay routes every peer response to every other agent. Agents do not need to know how many peers are in the session; they see inbound messages and emit responses, and the relay handles delivery.
 
 ### 1.1. Relationship to A2A Shared Task
 
@@ -84,8 +80,8 @@ For new sessions, each agent's runtime caches its own `contextId` and `taskId` f
 Once a session is established:
 
 - Any participant — client or agent — **MAY** send a message at any time
-- Items sent by the client are delivered to agents per the relay's routing policy (e.g. all agents in an all-to-all topology, only the first agent in a pipeline)
-- Response items from any agent are translated and delivered to peer agents per the relay's routing policy
+- Items sent by the client are delivered to all agents
+- Response items from any agent are translated and delivered to all other agents
 - Translated peer items are delivered to each receiving agent's inbound stream as if they were client-originated messages (see [Section 5](#5-stream-translation))
 - Participants **SHOULD** record received peer messages in their own task's timeline (see [Section 4.3](#43-timeline-integration))
 - Participants **MAY** choose to act on or ignore any received message according to their own logic; no response is required
