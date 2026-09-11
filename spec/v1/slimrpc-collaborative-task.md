@@ -32,7 +32,10 @@ Before initiating a session, the client **MUST** inspect the Agent Card of each 
 A participant is **SLIMRPC-capable** if its Agent Card declares:
 
 - A `supportedInterfaces` entry with SLIMRPC protocol binding (`https://a2a-protocol.org/bindings/experimental-slimrpc/v1`)
-- Both the [A2A Shared Task](a2a-shared-task.md) extension URI (`https://a2a-protocol.org/extensions/shared-task/v1`) and the SLIMRPC Collaborative Task extension URI (`https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1`) in `capabilities.extensions`
+- All three of the following extension URIs in `capabilities.extensions`:
+  - [A2A Shared Task](a2a-shared-task.md): `https://a2a-protocol.org/extensions/shared-task/v1`
+  - [A2A Collaborative Task](a2a-collaborative-task.md): `https://a2a-protocol.org/extensions/collaborative-task/v1`
+  - SLIMRPC Collaborative Task: `https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1`
 
 The client selects the transport mode as follows:
 
@@ -119,7 +122,7 @@ Agents that support SLIMRPC collaborative task sessions **MUST** declare this us
 https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1
 ```
 
-Both this URI and the [A2A Shared Task](a2a-shared-task.md) extension URI (`https://a2a-protocol.org/extensions/shared-task/v1`) **MUST** be declared in `capabilities.extensions` in the agent's Agent Card. The existing SLIMRPC binding `supportedInterfaces` entry is sufficient; no new `protocolBinding` identifier is required.
+All three extension URIs — [A2A Shared Task](a2a-shared-task.md), [A2A Collaborative Task](a2a-collaborative-task.md), and the SLIMRPC profile URI — **MUST** be declared in `capabilities.extensions` in the agent's Agent Card. The existing SLIMRPC binding `supportedInterfaces` entry is sufficient; no new `protocolBinding` identifier is required.
 
 **Example Agent Card fragment:**
 
@@ -146,8 +149,13 @@ Both this URI and the [A2A Shared Task](a2a-shared-task.md) extension URI (`http
         "required": false
       },
       {
+        "uri": "https://a2a-protocol.org/extensions/collaborative-task/v1",
+        "description": "Supports collaborative task sessions with peer agents via a relay.",
+        "required": false
+      },
+      {
         "uri": "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1",
-        "description": "Supports collaborative task sessions on SLIM group channels (SendLiveMessage with slimrpc-live-routing: collaborative).",
+        "description": "Supports native SLIMRPC collaborative task sessions on SLIM group channels (SendLiveMessage with slimrpc-live-routing: collaborative).",
         "required": false
       }
     ]

@@ -59,7 +59,36 @@ All three models share the following requirements:
 
 ## 3. Extension Declaration
 
-The collaborative task extension requires **both** the [A2A Shared Task](a2a-shared-task.md) extension and this extension. Agents that support collaborative task sessions **MUST** declare both extension URIs in their Agent Card. The collaborative task extension URI is binding-specific. Clients **SHOULD** verify that all target agents declare both extensions before initiating a session. Agents that do not declare both extensions **SHOULD NOT** be included in a collaborative task session.
+The collaborative task extension requires **both** the [A2A Shared Task](a2a-shared-task.md) extension and this extension. Agents that support collaborative task sessions **MUST** declare both extension URIs in `capabilities.extensions` in their Agent Card.
+
+The extension URI for the A2A Collaborative Task extension is:
+
+```
+https://a2a-protocol.org/extensions/collaborative-task/v1
+```
+
+Bindings **MAY** additionally declare a binding-specific extension URI alongside this one to advertise support for a particular transport implementation (e.g. the SLIMRPC native mode). Clients **SHOULD** verify that all target agents declare both the shared-task URI and the collaborative-task URI before initiating a session. Agents that do not declare both **SHOULD NOT** be included in a collaborative task session.
+
+**Example Agent Card fragment:**
+
+```json
+{
+  "capabilities": {
+    "extensions": [
+      {
+        "uri": "https://a2a-protocol.org/extensions/shared-task/v1",
+        "description": "Supports multiple clients sending to the same task with per-message sender identity.",
+        "required": false
+      },
+      {
+        "uri": "https://a2a-protocol.org/extensions/collaborative-task/v1",
+        "description": "Supports collaborative task sessions with peer agents via a relay.",
+        "required": false
+      }
+    ]
+  }
+}
+```
 
 ## 4. Session Model
 

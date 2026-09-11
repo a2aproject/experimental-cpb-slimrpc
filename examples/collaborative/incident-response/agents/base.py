@@ -42,7 +42,10 @@ SLIM_SECRET = "secretsecretsecretsecretsecretsecret"
 NAMESPACE = "mydomain"
 GROUP = "demo"
 
-COLLABORATIVE_TASK_EXTENSION_URI = (
+A2A_COLLABORATIVE_TASK_EXTENSION_URI = (
+    "https://a2a-protocol.org/extensions/collaborative-task/v1"
+)
+SLIMRPC_COLLABORATIVE_TASK_EXTENSION_URI = (
     "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1"
 )
 
@@ -86,10 +89,20 @@ def make_agent_card(name: str, description: str, slim_name: str, skills: list) -
             streaming=True,
             extensions=[
                 AgentExtension(
-                    uri=COLLABORATIVE_TASK_EXTENSION_URI,
-                    description="Participates in collaborative task incident-response sessions.",
+                    uri="https://a2a-protocol.org/extensions/shared-task/v1",
+                    description="Supports multiple clients sending to the same task with per-message sender identity.",
                     required=False,
-                )
+                ),
+                AgentExtension(
+                    uri=A2A_COLLABORATIVE_TASK_EXTENSION_URI,
+                    description="Supports collaborative task sessions with peer agents via a relay.",
+                    required=False,
+                ),
+                AgentExtension(
+                    uri=SLIMRPC_COLLABORATIVE_TASK_EXTENSION_URI,
+                    description="Supports native SLIMRPC collaborative task sessions on SLIM group channels.",
+                    required=False,
+                ),
             ],
         ),
         skills=skills,
