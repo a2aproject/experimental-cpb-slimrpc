@@ -29,14 +29,14 @@ SLIMRPC broadcast live messaging uses the same SLIM group channel mechanism as m
 
 ### 3.2. Metadata Key Names
 
-The following table maps the abstract attribution fields from [Section 5.2 of the base spec](a2a-broadcast-live.md#52-message-attribution) to their SLIMRPC metadata key names:
+The following table maps the extension metadata fields from [Section 5.2 of the base spec](a2a-broadcast-live.md#52-message-attribution) to their SLIMRPC concrete keys. SLIMRPC uses flat metadata keys rather than nested dictionaries; the extension URI prefix identifies ownership.
 
-| Abstract field | SLIMRPC metadata key | Value format |
-| :--- | :--- | :--- |
-| `message-sender` | `slim-src` | SLIM name in `domain/namespace/service` format |
-| `peer-task-id` | `slim-peer-task-id` | A2A task ID string |
-| `peer-state` | `slim-peer-state` | `TaskState` name (lower-case, no `TASK_STATE_` prefix) |
-| Context map | `slimrpc-context-map` | JSON object `{ "SLIM name" → "contextId" }` |
+| Extension | Field | SLIMRPC metadata key | Value format |
+| :--- | :--- | :--- | :--- |
+| shared-task | `message-sender` | `slim-src` | SLIM name in `domain/namespace/service` format |
+| broadcast-live | `peer-task-id` | `slim-peer-task-id` | A2A task ID string |
+| broadcast-live | `peer-state` | `slim-peer-state` | `TaskState` name (lower-case, no `TASK_STATE_` prefix) |
+| — | Context map | `slimrpc-context-map` | JSON object `{ "SLIM name" → "contextId" }` |
 
 `slim-src` is populated from the SLIM transport `src` field. Application code **MUST NOT** set or override any of these keys.
 
@@ -58,15 +58,15 @@ To continue an existing context, the initiating client **MAY** include a `slimrp
 
 ## 4. Message Attribution
 
-The full attribution model is defined in [Section 5.2 of the base spec](a2a-broadcast-live.md#52-message-attribution). SLIMRPC populates `slim-src` from the SLIM transport `src` field; `slim-peer-task-id` and `slim-peer-state` are stamped by the SLIMRPC runtime on translated peer items.
+The full attribution model is defined in [Section 5.2 of the base spec](a2a-broadcast-live.md#52-message-attribution). SLIMRPC uses flat metadata keys; the mapping to the two extension namespaces is defined in §3.2. `slim-src` is populated from the SLIM transport `src` field; `slim-peer-task-id` and `slim-peer-state` are stamped by the SLIMRPC runtime on translated peer items.
 
-**Example — client-originated item:**
+**Example — client-originated item** (shared-task `message-sender` only; no broadcast-live peer fields):
 
 ```
 slim-src: mydomain/demo/client
 ```
 
-**Example — translated peer item:**
+**Example — translated peer item** (both shared-task sender and broadcast-live peer fields):
 
 ```
 slim-src: mydomain/demo/agent-a
@@ -74,7 +74,7 @@ slim-peer-task-id: task-7f3c1b
 slim-peer-state: working
 ```
 
-Recipients **MUST** use `metadata["slim-src"]` for sender attribution at the A2A layer.
+Recipients **MUST** use `slim-src` for sender attribution and **MUST NOT** interpret the absence of `slim-peer-task-id` as an error on client-originated items.
 
 ## 5. Agent Card Declaration
 
@@ -84,7 +84,7 @@ Agents that support SLIMRPC broadcast live messaging **MUST** declare this using
 https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/broadcast-live/v1
 ```
 
-This URI **MUST** be declared in `capabilities.extensions` in the agent's Agent Card as the `uri` field of an `AgentExtension` object. The existing SLIMRPC binding `supportedInterfaces` entry is sufficient; no new `protocolBinding` identifier is required.
+Both this URI and the [A2A Shared Task](a2a-shared-task.md) extension URI (`https://a2a-protocol.org/extensions/shared-task/v1`) **MUST** be declared in `capabilities.extensions` in the agent's Agent Card. The existing SLIMRPC binding `supportedInterfaces` entry is sufficient; no new `protocolBinding` identifier is required.
 
 **Example Agent Card fragment:**
 
@@ -106,6 +106,11 @@ This URI **MUST** be declared in `capabilities.extensions` in the agent's Agent 
     "streaming": true,
     "extensions": [
       {
+        "uri": "https://a2a-protocol.org/extensions/shared-task/v1",
+        "description": "Supports multiple clients sending to the same task with per-message sender identity.",
+        "required": false
+      },
+      {
         "uri": "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/broadcast-live/v1",
         "description": "Supports broadcast live messaging on SLIM group channels (SendLiveMessage with slimrpc-live-routing: broadcast).",
         "required": false
@@ -116,7 +121,7 @@ This URI **MUST** be declared in `capabilities.extensions` in the agent's Agent 
 }
 ```
 
-Clients **SHOULD** verify that all target agents declare this extension URI before initiating a broadcast live session. Agents that do not declare the extension **SHOULD NOT** be invited into a broadcast live session.
+Clients **SHOULD** verify that all target agents declare both extension URIs before initiating a broadcast live session. Agents that do not declare both extensions **SHOULD NOT** be invited into a broadcast live session.
 
 ## 6. Channel Establishment
 

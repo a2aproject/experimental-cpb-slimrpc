@@ -54,7 +54,7 @@ Both models share the following requirements:
 
 ## 3. Extension Declaration
 
-Agents that support broadcast live messaging **MUST** declare the extension in their Agent Card using the A2A `AgentExtension` mechanism. The extension URI is binding-specific. Clients **SHOULD** verify that all target agents declare the broadcast-live extension before initiating a session. Agents that do not declare the extension **SHOULD NOT** be invited into a broadcast live session.
+Broadcast live messaging requires **both** the [A2A Shared Task](a2a-shared-task.md) extension and this extension. Agents that support broadcast live messaging **MUST** declare both extension URIs in their Agent Card. The broadcast-live extension URI is binding-specific. Clients **SHOULD** verify that all target agents declare both extensions before initiating a session. Agents that do not declare both extensions **SHOULD NOT** be invited into a broadcast live session.
 
 ## 4. Session Model
 
@@ -97,7 +97,7 @@ The runtime (transport layer or application relay) is responsible for translatin
 
 ### 5.1. Translation Rules
 
-**Client-originated request items** (sent by the initiating client and broadcast to all agents) are delivered directly to each agent's inbound stream without structural modification. The runtime **MUST** inject the sender attribution key (see [Section 5.2](#52-message-attribution)) before delivery.
+**Client-originated request items** (sent by the initiating client and broadcast to all agents) are delivered directly to each agent's inbound stream without structural modification. The runtime **MUST** populate the shared-task `message-sender` field (see [Section 5.2](#52-message-attribution)) before delivery.
 
 **Peer response items** (emitted by an agent and broadcast to all other channel members) are translated into request items before delivery:
 
@@ -118,33 +118,42 @@ For `Task` and `TaskStatusUpdateEvent` items, the `Part.data` field is a `google
 
 For `TaskStatusUpdateEvent` with `status.message`, the translated message carries the original text parts so receiving agents can directly use the content, and appends a `Part.data` so agents can also inspect the full event envelope (state, task ID, etc.).
 
-`TaskMessageUpdateEvent` is a notification that this agent's task received an external input message from outside the broadcast channel (e.g. a direct `SendMessage` call from another client). It is forwarded as `StreamRequest { message }` with original parts unchanged. The runtime **MUST NOT** overwrite the sender attribution key on these items — the message already carries the original sender's identity from when it was delivered to the agent, and replacing it with the relay agent's identity would misattribute the message. The runtime **MUST** still stamp the peer task ID attribution key so receivers can identify which peer task received the external input. Receiving agents **MUST NOT** treat a forwarded `TaskMessageUpdateEvent` as agent-generated content.
+`TaskMessageUpdateEvent` is a notification that this agent's task received an external input message from outside the broadcast channel (e.g. a direct `SendMessage` call from another client). It is forwarded as `StreamRequest { message }` with original parts unchanged. The runtime **MUST NOT** overwrite the shared-task `message-sender` field on these items — the message already carries the original sender's identity from when it was delivered to the agent, and replacing it with the relay agent's identity would misattribute the message. The runtime **MUST** still stamp the broadcast-live `peer-task-id` field so receivers can identify which peer task received the external input. Receiving agents **MUST NOT** treat a forwarded `TaskMessageUpdateEvent` as agent-generated content.
 
 ### 5.2. Message Attribution
 
-The runtime populates attribution metadata before delivering any item to a receiving member. Application code **MUST NOT** set or override these fields. Attribution is stored as a nested dictionary under the broadcast-live extension URI in `Message.metadata`:
+Broadcast live messaging requires both the [A2A Shared Task](a2a-shared-task.md) extension and this extension to be active together. Sender identity is carried by the shared-task extension; broadcast-live adds peer-specific fields for translated peer items. The runtime populates both sets of metadata before delivering any item to a receiving member. Application code **MUST NOT** set or override these fields.
+
+**Shared-task extension** (sender identity — present on all items):
+
+```json
+{
+  "https://a2a-protocol.org/extensions/shared-task/v1": {
+    "message-sender": "<sender identity>"
+  }
+}
+```
+
+**Broadcast-live extension** (peer context — present on translated peer items only):
 
 ```json
 {
   "https://a2a-protocol.org/extensions/broadcast-live/v1": {
-    "message-sender": "<sender identity>",
     "peer-task-id": "<peer task ID>",
     "peer-state": "<peer task state>"
   }
 }
 ```
 
-| Field | Present on | Description |
-| :--- | :--- | :--- |
-| `message-sender` | All items | Identity of the originating sender; format defined by binding |
-| `peer-task-id` | Translated peer items only | Task ID of the peer agent that produced this event |
-| `peer-state` | Translated `TaskStatusUpdateEvent` items only | Task state of the peer at the time of the event |
+| Extension | Field | Present on | Description |
+| :--- | :--- | :--- | :--- |
+| shared-task | `message-sender` | All items | Identity of the originating sender; format defined by binding |
+| broadcast-live | `peer-task-id` | Translated peer items only | Task ID of the peer agent that produced this event |
+| broadcast-live | `peer-state` | Translated `TaskStatusUpdateEvent` items only | Task state of the peer at the time of the event |
 
 **`message-sender`** **MUST** be present on every item delivered to a receiving member. For client-originated items and all translated peer items except `TaskMessageUpdateEvent`, the runtime sets this to the sender's identity. For translated `TaskMessageUpdateEvent` items, `message-sender` **MUST** be preserved from the original message (the external client that sent the out-of-band input) and **MUST NOT** be replaced with the relay agent's identity.
 
-**`peer-task-id`** and **`peer-state`** are only meaningful for translated peer items and **MUST NOT** be present on client-originated items.
-
-**Alignment with shared-task:** Agents that also declare the [A2A Shared Task](a2a-shared-task.md) extension carry sender identity under a separate namespace. When broadcast-live and shared-task are both active, the runtime **SHOULD** also populate the shared-task `message-sender` field with the same value as the broadcast-live `message-sender`, so agents see consistent sender identity regardless of whether a message originated from a direct client or a translated peer event.
+**`peer-task-id`** and **`peer-state`** **MUST NOT** be present on client-originated items.
 
 ### 5.3. Session ID Rewriting
 
