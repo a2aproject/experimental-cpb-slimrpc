@@ -17,6 +17,7 @@
 import uuid
 
 import slim_bindings
+from google.protobuf.struct_pb2 import Struct
 from a2a.server.agent_execution import AgentExecutor
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore
@@ -42,6 +43,7 @@ SLIM_SECRET = "secretsecretsecretsecretsecretsecret"
 NAMESPACE = "mydomain"
 GROUP = "demo"
 
+A2A_SHARED_TASK_EXTENSION_URI = "https://a2a-protocol.org/extensions/shared-task/v1"
 A2A_COLLABORATIVE_TASK_EXTENSION_URI = (
     "https://a2a-protocol.org/extensions/collaborative-task/v1"
 )
@@ -118,8 +120,27 @@ def make_agent_message(text: str, slim_name: str, context_id: str = "", task_id:
         role=ROLE_AGENT,
         parts=[Part(text=text)],
     )
-    msg.metadata.fields["slim-src"].string_value = slim_name
+    set_message_sender(msg, slim_name)
     return msg
+
+
+def set_message_sender(msg: Message, sender: str) -> None:
+    """Set message-sender in Message.metadata under the shared-task extension URI."""
+    inner = Struct()
+    inner.fields["message-sender"].string_value = sender
+    msg.metadata.fields[A2A_SHARED_TASK_EXTENSION_URI].struct_value.CopyFrom(inner)
+
+
+def get_message_sender(msg: Message) -> str:
+    """Read message-sender from Message.metadata under the shared-task extension URI."""
+    try:
+        return (
+            msg.metadata.fields[A2A_SHARED_TASK_EXTENSION_URI]
+            .struct_value.fields["message-sender"]
+            .string_value
+        )
+    except (KeyError, ValueError):
+        return "unknown"
 
 
 def get_message_text(msg: Message) -> str:
@@ -128,14 +149,6 @@ def get_message_text(msg: Message) -> str:
         if part.HasField("text"):
             return part.text
     return ""
-
-
-def get_slim_src(msg: Message) -> str:
-    """Read slim-src metadata from a Message."""
-    try:
-        return msg.metadata["slim-src"]
-    except (KeyError, ValueError):
-        return "unknown"
 
 
 # ---------------------------------------------------------------------------

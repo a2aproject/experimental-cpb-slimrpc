@@ -36,24 +36,21 @@ from a2a.types.a2a_pb2 import (
     ROLE_USER,
     StreamRequest,
     StreamResponse,
-    TaskState,
 )
 
 from slima2a.client_transport import SRPCTransport
 
-
-def _task_state_name(state: TaskState) -> str:
-    """Return a lower-case state name string from a TaskState enum value."""
-    return TaskState.Name(state).removeprefix("TASK_STATE_").lower()
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+from agents.base import set_message_sender
 
 
 def _forward_message(
     msg: Message,
-    slim_src: str,
-    peer_task_id: str,
+    sender: str,
     event=None,
     media_type: str = "",
-    state: TaskState | None = None,
 ) -> StreamRequest:
     """Translate a peer Message into a ROLE_USER StreamRequest, preserving all parts.
 
@@ -68,19 +65,14 @@ def _forward_message(
         val = Value()
         val.struct_value.update(d)
         forwarded.parts.append(Part(data=val, media_type=media_type))
-    forwarded.metadata.fields["slim-src"].string_value = slim_src
-    forwarded.metadata.fields["slim-peer-task-id"].string_value = peer_task_id
-    if state is not None:
-        forwarded.metadata.fields["slim-peer-state"].string_value = _task_state_name(state)
+    set_message_sender(forwarded, sender)
     return StreamRequest(message=forwarded)
 
 
 def _event_data_message(
     event,
     media_type: str,
-    slim_src: str,
-    peer_task_id: str,
-    state: TaskState | None = None,
+    sender: str,
 ) -> StreamRequest:
     """Build a ROLE_USER StreamRequest carrying the serialised proto event as Part.data."""
     d = MessageToDict(event, preserving_proto_field_name=True)
@@ -91,10 +83,7 @@ def _event_data_message(
         role=ROLE_USER,
         parts=[Part(data=val, media_type=media_type)],
     )
-    msg.metadata.fields["slim-src"].string_value = slim_src
-    msg.metadata.fields["slim-peer-task-id"].string_value = peer_task_id
-    if state is not None:
-        msg.metadata.fields["slim-peer-state"].string_value = _task_state_name(state)
+    set_message_sender(msg, sender)
     return StreamRequest(message=msg)
 
 
@@ -162,7 +151,7 @@ class NStreamsBroadcastTransport:
         async def fan_out_client() -> None:
             """Distribute every client StreamRequest to all agent queues.
 
-            Injects slim-src from source_slim_name into each item's message
+            Populates message-sender from source_slim_name into each item's message
             metadata — mirroring what the real SLIM transport would do by
             reading context.src() before passing items to the executor.
 
@@ -172,7 +161,7 @@ class NStreamsBroadcastTransport:
             try:
                 async for req in request_stream:
                     if self._source_slim_name and req.HasField("message"):
-                        req.message.metadata.fields["slim-src"].string_value = self._source_slim_name
+                        set_message_sender(req.message, self._source_slim_name)
                     for q in queues.values():
                         await q.put(req)
             finally:
@@ -197,27 +186,14 @@ class NStreamsBroadcastTransport:
                 ):
                     await output_queue.put((slim_name, response))
 
-                    # Determine the peer task ID for attribution.
-                    peer_task_id = ""
-                    if response.HasField("task"):
-                        peer_task_id = response.task.id
-                    elif response.HasField("status_update"):
-                        peer_task_id = response.status_update.task_id
-                    elif response.HasField("artifact_update"):
-                        peer_task_id = response.artifact_update.task_id
-                    elif response.HasField("message_update"):
-                        peer_task_id = response.message_update.task_id
-
                     # Build forwarded StreamRequest for all other agents.
                     forwarded: StreamRequest | None = None
 
                     if response.HasField("task"):
-                        task = response.task
                         forwarded = _event_data_message(
-                            task,
+                            response.task,
                             "application/vnd.a2a.task+json",
-                            slim_src=slim_name,
-                            peer_task_id=task.id,
+                            sender=slim_name,
                         )
 
                     elif response.HasField("status_update"):
@@ -225,30 +201,31 @@ class NStreamsBroadcastTransport:
                         if update.status.HasField("message"):
                             forwarded = _forward_message(
                                 msg=update.status.message,
-                                slim_src=slim_name,
-                                peer_task_id=peer_task_id,
+                                sender=slim_name,
                                 event=update,
                                 media_type="application/vnd.a2a.task-status-update+json",
-                                state=update.status.state,
                             )
                         else:
                             forwarded = _event_data_message(
                                 update,
                                 "application/vnd.a2a.task-status-update+json",
-                                slim_src=slim_name,
-                                peer_task_id=peer_task_id,
-                                state=update.status.state,
+                                sender=slim_name,
                             )
 
                     elif response.HasField("message_update"):
                         update = response.message_update
-                        # Preserve the original slim-src from the out-of-band client;
-                        # only stamp slim-peer-task-id so agents know which peer task
-                        # received the external input.
+                        # Preserve the original message-sender from the out-of-band client;
+                        # append Part.data so agents have the full event envelope.
                         fwd_msg = Message()
                         fwd_msg.CopyFrom(update.message)
                         fwd_msg.role = ROLE_USER
-                        fwd_msg.metadata.fields["slim-peer-task-id"].string_value = peer_task_id
+                        d = MessageToDict(update, preserving_proto_field_name=True)
+                        val = Value()
+                        val.struct_value.update(d)
+                        fwd_msg.parts.append(Part(
+                            data=val,
+                            media_type="application/vnd.a2a.task-message-update+json",
+                        ))
                         forwarded = StreamRequest(message=fwd_msg)
 
                     elif response.HasField("artifact_update"):

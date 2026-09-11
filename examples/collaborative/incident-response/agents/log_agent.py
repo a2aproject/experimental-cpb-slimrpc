@@ -33,7 +33,7 @@ from agents.base import (
     NAMESPACE,
     GROUP,
     get_message_text,
-    get_slim_src,
+    get_message_sender,
     log,
     make_agent_card,
     make_agent_message,
@@ -73,7 +73,7 @@ class LogAgentExecutor(AgentExecutor):
                     await event_queue.enqueue_event(task)
                     updater = TaskUpdater(event_queue, task.id, task.context_id)
 
-                sender = get_slim_src(msg_ctx.message)
+                sender = get_message_sender(msg_ctx.message)
                 text = get_message_text(msg_ctx.message)
 
                 if not logs_sent and "ANOMALY" in text.upper() and sender != FULL_SLIM_NAME:

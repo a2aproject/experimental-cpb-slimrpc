@@ -34,7 +34,7 @@ from agents.base import (
     NAMESPACE,
     GROUP,
     get_message_text,
-    get_slim_src,
+    get_message_sender,
     log,
     make_agent_card,
     make_agent_message,
@@ -71,7 +71,7 @@ class RemediationAgentExecutor(AgentExecutor):
                     await event_queue.enqueue_event(task)
                     updater = TaskUpdater(event_queue, task.id, task.context_id)
 
-                sender = get_slim_src(msg_ctx.message)
+                sender = get_message_sender(msg_ctx.message)
                 text = get_message_text(msg_ctx.message)
 
                 # Step 1: propose remediation plan on first confident diagnosis.
