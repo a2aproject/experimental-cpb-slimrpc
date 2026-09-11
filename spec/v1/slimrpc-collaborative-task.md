@@ -124,6 +124,8 @@ https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-
 
 All three extension URIs — [A2A Shared Task](a2a-shared-task.md), [A2A Collaborative Task](a2a-collaborative-task.md), and the SLIMRPC profile URI — **MUST** be declared in `capabilities.extensions` in the agent's Agent Card. The existing SLIMRPC binding `supportedInterfaces` entry is sufficient; no new `protocolBinding` identifier is required.
 
+An agent **MUST NOT** declare the SLIMRPC Collaborative Task extension URI unless it is started with shared-responses mode enabled (`Server.new_with_shared_responses_and_connection`). Declaring this URI is the signal that the client uses to determine native mode eligibility (see [Section 3](#3-transport-mode-selection)); an agent that declares it but is not running in shared-responses mode will fail to participate correctly in native mode sessions.
+
 **Example Agent Card fragment:**
 
 ```json
