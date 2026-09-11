@@ -49,7 +49,7 @@ The client selects the transport mode as follows:
 
 **Condition:** all participants are SLIMRPC-capable.
 
-The client creates a SLIM group channel with shared-responses enabled and invites all participants. The client sends `SendLiveMessage` on the group channel with the SLIMRPC Collaborative Task extension URI in the `a2a-extensions` service parameter (see [Section 4](#4-activation-signal)).
+The client creates a SLIM group channel with shared-responses enabled and invites all participants. The client opens a streaming call (`SendLiveMessage` or `SendStreamingMessage`) on the group channel with the SLIMRPC Collaborative Task extension URI in the `a2a-extensions` service parameter (see [Section 4](#4-activation-signal)).
 
 SLIM delivers each participant's `StreamResponse` to all other group members natively. The SLIMRPC transport layer on each agent performs stream translation (peer `StreamResponse` → `StreamRequest`), `message-sender` population, and session ID rewriting before passing items to the agent executor. No application-layer relay is required.
 
@@ -77,15 +77,17 @@ The client uses the transport tiers defined in the base spec with point-to-point
 
 ## 4. Activation Signal
 
-Collaborative task mode is activated by including the SLIMRPC Collaborative Task extension URI in the `a2a-extensions` service parameter on the `SendLiveMessage` call:
+Collaborative task mode is activated by including the SLIMRPC Collaborative Task extension URI in the `a2a-extensions` service parameter on the initial streaming call to the SLIM group channel:
 
 ```
 a2a-extensions: https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1
 ```
 
-This is the standard A2A service parameters mechanism (see [SLIMRPC metadata §4.3](slimrpc.md#43-metadata)). It is set on `SendLiveMessage` calls on SLIM group channels only. Point-to-point A2A calls in hybrid or full relay mode do not carry this key.
+This is the standard A2A service parameters mechanism (see [SLIMRPC metadata §4.3](slimrpc.md#43-metadata)). It applies to both `SendLiveMessage` and `SendStreamingMessage` calls on SLIM group channels. The difference between the two is only whether the client holds an open send stream (`SendLiveMessage`) or uses separate `SendMessage(context_id)` calls to inject follow-up items (`SendStreamingMessage`); neither choice affects how the group channel delivers `StreamResponse` items to participants.
 
-When this URI is absent from `a2a-extensions` on a `SendLiveMessage` call, the call follows standard multicast routing (see [slimrpc-multicast.md](slimrpc-multicast.md)).
+Point-to-point A2A calls in hybrid or full relay mode do not carry this key.
+
+When this URI is absent from `a2a-extensions`, the call follows standard multicast routing (see [slimrpc-multicast.md](slimrpc-multicast.md)).
 
 ## 5. Metadata
 
@@ -107,7 +109,7 @@ Peer task context (`task_id`, `context_id`, state) is carried in `Part.data` on 
 
 ### 5.2. Session Metadata — Context Map
 
-The `slimrpc-context-map` is SLIMRPC session-level metadata supplied on the initial `SendLiveMessage` call. It is used to continue an existing session; for new sessions it **MUST** be omitted.
+The `slimrpc-context-map` is SLIMRPC session-level metadata supplied on the initial streaming call to the group channel. It is used to continue an existing session; for new sessions it **MUST** be omitted.
 
 The value is a JSON object mapping each agent's SLIM name to its `contextId` from a prior session:
 
@@ -194,7 +196,7 @@ An agent **MUST NOT** declare the SLIMRPC Collaborative Task extension URI unles
 1. **Inspect Agent Cards** of all intended participants to confirm all are SLIMRPC-capable
 2. **Create a SLIM group channel** with a name of the client's choosing, following the `domain/namespace/channel-name` format, with shared-responses enabled
 3. **Invite members** into the group channel using each participant's individual SLIM name (see [Section 6 of the Multicast RPC spec](slimrpc-multicast.md#6-sending-a-multicast-request) for the invitation procedure)
-4. **Initiate the session** by invoking `SendLiveMessage` on the group channel with the SLIMRPC Collaborative Task extension URI in the `a2a-extensions` service parameter (see [Section 4](#4-activation-signal))
+4. **Initiate the session** by opening a streaming call (`SendLiveMessage` or `SendStreamingMessage`) on the group channel with the SLIMRPC Collaborative Task extension URI in the `a2a-extensions` service parameter (see [Section 4](#4-activation-signal))
 5. **Collect initial tasks:** receive the first `StreamResponse` from each agent, which carries the initial `Task`; record each agent's SLIM name, task ID, and `contextId` from these responses and build the `slimrpc-context-map` for all subsequent requests
 
 ### 9.2. Hybrid Mode
@@ -209,11 +211,11 @@ An agent **MUST NOT** declare the SLIMRPC Collaborative Task extension URI unles
 
 ### 10.1. Creation
 
-The initiating client creates the SLIM group channel and invites all SLIMRPC-capable participants at the SLIM transport level before sending `SendLiveMessage`.
+The initiating client creates the SLIM group channel and invites all SLIMRPC-capable participants at the SLIM transport level before opening the initial streaming call.
 
 ### 10.2. Membership Changes
 
-SLIMRPC does not support adding new participants to an active `SendLiveMessage` session. To include new participants, the initiating client **MUST** cancel the active session (see Section 10.3), and restart the session with all intended participants from the beginning, re-evaluating transport mode based on the full updated participant set.
+SLIMRPC does not support adding new participants to an active session. To include new participants, the initiating client **MUST** cancel the active session (see Section 10.3), and restart the session with all intended participants from the beginning, re-evaluating transport mode based on the full updated participant set.
 
 When a participant is removed from the channel, its stream **MUST** be terminated. Other participants' streams and tasks are unaffected.
 
@@ -230,6 +232,6 @@ The following are channel-level failures:
 | Condition | SLIMRPC Status Code |
 | :--- | :--- |
 | The SLIM group channel does not exist | `NOT_FOUND` |
-| The initial `SendLiveMessage` cannot be delivered to the channel | `UNAVAILABLE` |
+| The initial streaming call cannot be delivered to the channel | `UNAVAILABLE` |
 
-A collaborative task session is only considered to have failed at the interaction level if the SLIM group channel cannot be created or the initial `SendLiveMessage` to the channel cannot be delivered. Failure to connect a single p2p participant in hybrid mode is a per-member failure and **MUST NOT** prevent the session from starting with the remaining participants.
+A collaborative task session is only considered to have failed at the interaction level if the SLIM group channel cannot be created or the initial streaming call to the channel cannot be delivered. Failure to connect a single p2p participant in hybrid mode is a per-member failure and **MUST NOT** prevent the session from starting with the remaining participants.
