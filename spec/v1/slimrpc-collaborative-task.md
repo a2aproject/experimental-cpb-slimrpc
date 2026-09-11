@@ -101,7 +101,7 @@ Sender identity is carried in `Message.metadata` at the A2A application layer, n
 }
 ```
 
-SLIMRPC populates `message-sender` from the SLIM transport `src` field (`slim-src`) on every item delivered via the group channel. On point-to-point connections in hybrid mode, the relay populates `message-sender` with the SLIM name of the originating participant before injecting the item. Application code **MUST NOT** set or override `message-sender`.
+SLIMRPC populates `message-sender` from the SLIM transport `src` field on every item delivered via the group channel. On point-to-point connections in hybrid mode, the relay populates `message-sender` with the SLIM name of the originating participant before injecting the item. Application code **MUST NOT** set or override `message-sender`.
 
 Peer task context (`task_id`, `context_id`, state) is carried in `Part.data` on each translated item, not in message metadata.
 

@@ -76,7 +76,6 @@ All keys prefixed with `A2A-` are reserved for A2A service parameters. SLIMRPC r
 | Key | Values | Description |
 | :--- | :--- | :--- |
 | `slimrpc-context-map` | JSON object string | Optional. Supplied once on the initial `SendLiveMessage` call to continue existing per-agent contexts; each agent's transport reads its own entry by SLIM name and injects it into all inbound `StreamRequest` items for the session. Absent = each agent caches its own `contextId` at task creation (see [slimrpc-multicast.md §8.3](slimrpc-multicast.md#83-task-management)) |
-| `slim-src` | SLIM name string | Read-only. The sender's SLIM name in `domain/namespace/service` format, extracted by the SLIMRPC runtime from the SLIM transport `src` field on every inbound item. The runtime uses this value to populate the `message-sender` field in `Message.metadata` under the [A2A Shared Task](a2a-shared-task.md) extension key before passing the item to the agent executor. Application code **MUST NOT** set or override this key. |
 
 **Example service parameters as SLIMRPC metadata:**
 
