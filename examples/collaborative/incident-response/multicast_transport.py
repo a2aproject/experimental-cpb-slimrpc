@@ -131,7 +131,7 @@ class MulticastBroadcastTransport:
 
         Args:
             request_stream: Async generator of StreamRequest items from the caller.
-            metadata:        SLIMRPC call metadata (e.g. slimrpc-live-routing).
+            metadata:        SLIMRPC call metadata (e.g. a2a-extensions).
         """
         sentinel = object()
 

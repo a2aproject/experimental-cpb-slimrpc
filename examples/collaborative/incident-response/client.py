@@ -156,7 +156,7 @@ async def main(transport_mode: str = "nstreams") -> None:
 
     async for slim_name, response in broadcast_client.send_live_message(
         requests(),
-        metadata={"slimrpc-live-routing": "collaborative"},
+        metadata={"a2a-extensions": "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1"},
     ):
         # Extract short agent name for log coloring (last path component).
         short_name = slim_name.rsplit("/", 1)[-1]

@@ -49,7 +49,7 @@ The client selects the transport mode as follows:
 
 **Condition:** all participants are SLIMRPC-capable.
 
-The client creates a SLIM group channel with shared-responses enabled and invites all participants. The client sends `SendLiveMessage` on the group channel with `slimrpc-live-routing: collaborative` in the call metadata.
+The client creates a SLIM group channel with shared-responses enabled and invites all participants. The client sends `SendLiveMessage` on the group channel with the SLIMRPC Collaborative Task extension URI in the `a2a-extensions` service parameter (see [Section 4](#4-activation-signal)).
 
 SLIM delivers each participant's `StreamResponse` to all other group members natively. The SLIMRPC transport layer on each agent performs stream translation (peer `StreamResponse` → `StreamRequest`), `message-sender` population, and session ID rewriting before passing items to the agent executor. No application-layer relay is required.
 
@@ -77,9 +77,15 @@ The client uses the transport tiers defined in the base spec with point-to-point
 
 ## 4. Activation Signal
 
-`slimrpc-live-routing: collaborative` in the SLIMRPC call metadata is the binding-defined activation signal required by [Section 4.1 of the base spec](a2a-collaborative-task.md#41-session-initiation). It is set on `SendLiveMessage` calls on SLIM group channels only. Point-to-point A2A calls in hybrid or full relay mode do not carry this key.
+Collaborative task mode is activated by including the SLIMRPC Collaborative Task extension URI in the `a2a-extensions` service parameter on the `SendLiveMessage` call:
 
-When absent on a `SendLiveMessage` call, the call follows standard multicast routing (see [slimrpc-multicast.md](slimrpc-multicast.md)).
+```
+a2a-extensions: https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1
+```
+
+This is the standard A2A service parameters mechanism (see [SLIMRPC metadata §4.3](slimrpc.md#43-metadata)). It is set on `SendLiveMessage` calls on SLIM group channels only. Point-to-point A2A calls in hybrid or full relay mode do not carry this key.
+
+When this URI is absent from `a2a-extensions` on a `SendLiveMessage` call, the call follows standard multicast routing (see [slimrpc-multicast.md](slimrpc-multicast.md)).
 
 ## 5. Metadata Key Names
 
@@ -157,7 +163,7 @@ An agent **MUST NOT** declare the SLIMRPC Collaborative Task extension URI unles
       },
       {
         "uri": "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1",
-        "description": "Supports native SLIMRPC collaborative task sessions on SLIM group channels (SendLiveMessage with slimrpc-live-routing: collaborative).",
+        "description": "Supports native SLIMRPC collaborative task sessions on SLIM group channels.",
         "required": false
       }
     ]
@@ -173,7 +179,7 @@ An agent **MUST NOT** declare the SLIMRPC Collaborative Task extension URI unles
 1. **Inspect Agent Cards** of all intended participants to confirm all are SLIMRPC-capable
 2. **Create a SLIM group channel** with a name of the client's choosing, following the `domain/namespace/channel-name` format, with shared-responses enabled
 3. **Invite members** into the group channel using each participant's individual SLIM name (see [Section 6 of the Multicast RPC spec](slimrpc-multicast.md#6-sending-a-multicast-request) for the invitation procedure)
-4. **Initiate the session** by invoking `SendLiveMessage` on the group channel with `slimrpc-live-routing: collaborative` in the SLIMRPC call metadata
+4. **Initiate the session** by invoking `SendLiveMessage` on the group channel with the SLIMRPC Collaborative Task extension URI in the `a2a-extensions` service parameter (see [Section 4](#4-activation-signal))
 5. **Collect initial tasks:** receive the first `StreamResponse` from each agent, which carries the initial `Task`; record each agent's SLIM name, task ID, and `contextId` from these responses and build the `slimrpc-context-map` for all subsequent requests
 
 ### 9.2. Hybrid Mode
