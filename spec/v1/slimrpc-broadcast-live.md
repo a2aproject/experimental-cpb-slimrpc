@@ -29,16 +29,14 @@ SLIMRPC broadcast live messaging uses the same SLIM group channel mechanism as m
 
 ### 3.2. Metadata Key Names
 
-The following table maps the extension metadata fields from [Section 5.2 of the base spec](a2a-broadcast-live.md#52-message-attribution) to their SLIMRPC concrete keys. SLIMRPC uses flat metadata keys rather than nested dictionaries; the extension URI prefix identifies ownership.
+SLIMRPC uses flat metadata keys rather than nested dictionaries. The only metadata field required by broadcast live sessions is sender identity from the shared-task extension:
 
 | Extension | Field | SLIMRPC metadata key | Value format |
 | :--- | :--- | :--- | :--- |
 | shared-task | `message-sender` | `slim-src` | SLIM name in `domain/namespace/service` format |
-| broadcast-live | `peer-task-id` | `slim-peer-task-id` | A2A task ID string |
-| broadcast-live | `peer-state` | `slim-peer-state` | `TaskState` name (lower-case, no `TASK_STATE_` prefix) |
 | — | Context map | `slimrpc-context-map` | JSON object `{ "SLIM name" → "contextId" }` |
 
-`slim-src` is populated from the SLIM transport `src` field. Application code **MUST NOT** set or override any of these keys.
+`slim-src` is populated from the SLIM transport `src` field. Peer task context (`task_id`, `context_id`, state) is carried in `Part.data` on each translated item, not in metadata. Application code **MUST NOT** set or override these keys.
 
 ### 3.3. Transport Modes
 
@@ -58,23 +56,21 @@ To continue an existing context, the initiating client **MAY** include a `slimrp
 
 ## 4. Message Attribution
 
-The full attribution model is defined in [Section 5.2 of the base spec](a2a-broadcast-live.md#52-message-attribution). SLIMRPC uses flat metadata keys; the mapping to the two extension namespaces is defined in §3.2. `slim-src` is populated from the SLIM transport `src` field; `slim-peer-task-id` and `slim-peer-state` are stamped by the SLIMRPC runtime on translated peer items.
+The full attribution model is defined in [Section 5.2 of the base spec](a2a-broadcast-live.md#52-message-attribution). SLIMRPC populates `slim-src` from the SLIM transport `src` field on every delivered item. Peer task context is carried in `Part.data`, not in metadata.
 
-**Example — client-originated item** (shared-task `message-sender` only; no broadcast-live peer fields):
+**Example — client-originated item:**
 
 ```
 slim-src: mydomain/demo/client
 ```
 
-**Example — translated peer item** (both shared-task sender and broadcast-live peer fields):
+**Example — translated peer item** (`slim-src` set to the peer agent; peer context in `Part.data`):
 
 ```
 slim-src: mydomain/demo/agent-a
-slim-peer-task-id: task-7f3c1b
-slim-peer-state: working
 ```
 
-Recipients **MUST** use `slim-src` for sender attribution and **MUST NOT** interpret the absence of `slim-peer-task-id` as an error on client-originated items.
+Recipients **MUST** use `slim-src` for sender attribution.
 
 ## 5. Agent Card Declaration
 
