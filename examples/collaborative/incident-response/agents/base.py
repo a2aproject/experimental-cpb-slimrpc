@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Shared helpers for the incident-response broadcast-live example."""
+"""Shared helpers for the incident-response collaborative task example."""
 
 import uuid
 
@@ -42,8 +42,8 @@ SLIM_SECRET = "secretsecretsecretsecretsecretsecret"
 NAMESPACE = "mydomain"
 GROUP = "demo"
 
-BROADCAST_LIVE_EXTENSION_URI = (
-    "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/broadcast-live/v1"
+COLLABORATIVE_TASK_EXTENSION_URI = (
+    "https://a2a-protocol.org/bindings/experimental-slimrpc/extensions/collaborative-task/v1"
 )
 
 # ANSI color codes for log output — one per named participant.
@@ -86,8 +86,8 @@ def make_agent_card(name: str, description: str, slim_name: str, skills: list) -
             streaming=True,
             extensions=[
                 AgentExtension(
-                    uri=BROADCAST_LIVE_EXTENSION_URI,
-                    description="Participates in broadcast live incident-response sessions.",
+                    uri=COLLABORATIVE_TASK_EXTENSION_URI,
+                    description="Participates in collaborative task incident-response sessions.",
                     required=False,
                 )
             ],
@@ -140,9 +140,9 @@ async def start_agent(
 ) -> None:
     """Connect to SLIM, register A2A service handler, and start serving.
 
-    Pass shared_responses=True for native broadcast-live mode: registers both
+    Pass shared_responses=True for native fan-out mode: registers both
     SRPCHandler and SRPCSharedHandler so the agent accepts both point-to-point
-    and broadcast-live SendLiveMessage calls.
+    and collaborative task SendLiveMessage calls.
     """
     _service, local_app, local_name, conn_id = await setup_slim_client(
         namespace=NAMESPACE,

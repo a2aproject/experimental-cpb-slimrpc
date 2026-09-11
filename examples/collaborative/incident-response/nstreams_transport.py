@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""N-streams application-layer broadcast routing for SendLiveMessage.
+"""N-streams application-layer relay for collaborative task sessions (SendLiveMessage).
 
 NStreamsBroadcastTransport wraps N point-to-point SRPCTransport instances and
-implements the broadcast-live spec pattern: each StreamResponse from any
+implements the collaborative task basic relay pattern: each StreamResponse from any
 agent is forwarded as a StreamRequest to all other agents, so every
 participant sees every message in the session.
 

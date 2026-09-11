@@ -75,9 +75,9 @@ All keys prefixed with `A2A-` are reserved for A2A service parameters. SLIMRPC r
 
 | Key | Values | Description |
 | :--- | :--- | :--- |
-| `slimrpc-live-routing` | `broadcast` | Enables broadcast live messaging on a `SendLiveMessage` call; absent = standard multicast (see [slimrpc-broadcast-live.md §3](slimrpc-broadcast-live.md#3-protocol-requirements)) |
+| `slimrpc-live-routing` | `collaborative` | Enables collaborative task mode on a `SendLiveMessage` call; absent = standard multicast (see [slimrpc-collaborative-task.md §3](slimrpc-collaborative-task.md#3-slimrpc-binding)) |
 | `slimrpc-context-map` | JSON object string | Optional. Supplied once on the initial `SendLiveMessage` call to continue existing per-agent contexts; each agent's transport reads its own entry by SLIM name and injects it into all inbound `StreamRequest` items for the session. Absent = each agent caches its own `contextId` at task creation (see [slimrpc-multicast.md §8.3](slimrpc-multicast.md#83-task-management)) |
-| `slim-src` | SLIM name string | Sender's SLIM name in `domain/namespace/service` format, populated by the SLIMRPC runtime from the SLIM transport `src` field. Serves as the SLIMRPC binding's `message-sender` value per the [A2A Shared Task](a2a-shared-task.md) extension on point-to-point calls, and on all items in broadcast live sessions (see [slimrpc-broadcast-live.md §4](slimrpc-broadcast-live.md#4-message-attribution)) |
+| `slim-src` | SLIM name string | Sender's SLIM name in `domain/namespace/service` format, populated by the SLIMRPC runtime from the SLIM transport `src` field. Serves as the SLIMRPC binding's `message-sender` value per the [A2A Shared Task](a2a-shared-task.md) extension on point-to-point calls, and on all items in collaborative task sessions (see [slimrpc-collaborative-task.md §4](slimrpc-collaborative-task.md#4-message-attribution)) |
 
 **Example service parameters as SLIMRPC metadata:**
 

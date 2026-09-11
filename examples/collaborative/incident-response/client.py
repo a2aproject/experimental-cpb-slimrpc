@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Incident-response broadcast live session client.
+"""Incident-response collaborative task session client.
 
-Connects to agents over SLIM and initiates a SendLiveMessage broadcast session.
+Connects to agents over SLIM and initiates a SendLiveMessage collaborative task session.
 Three transport modes are available via --transport:
 
   nstreams          (default) NStreamsBroadcastTransport — N point-to-point SRPCTransport
@@ -156,7 +156,7 @@ async def main(transport_mode: str = "nstreams") -> None:
 
     async for slim_name, response in broadcast_client.send_live_message(
         requests(),
-        metadata={"slimrpc-live-routing": "broadcast"},
+        metadata={"slimrpc-live-routing": "collaborative"},
     ):
         # Extract short agent name for log coloring (last path component).
         short_name = slim_name.rsplit("/", 1)[-1]
@@ -209,7 +209,7 @@ async def main(transport_mode: str = "nstreams") -> None:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Incident-response broadcast live client")
+    parser = argparse.ArgumentParser(description="Incident-response collaborative task client")
     parser.add_argument(
         "--transport",
         choices=["nstreams", "multicast", "native-broadcast"],

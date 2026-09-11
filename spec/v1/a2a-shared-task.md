@@ -2,7 +2,7 @@
 
 This document specifies the **shared task** extension for A2A. It defines how multiple clients can participate in a single running `Task` on the same agent, and how agents identify the sender of each message at the application layer.
 
-The shared-task primitive is the foundation for the [A2A Broadcast Live](a2a-broadcast-live.md) extension, which generalises this model to multiple agents in a group-chat session.
+The shared-task primitive is the foundation for the [A2A Collaborative Task](a2a-collaborative-task.md) extension, which generalises this model to multiple agents in a multi-agent session.
 
 ## 1. Overview
 

@@ -204,7 +204,7 @@ Both transport modules implement the same interface and produce identical sessio
 | **Agent startup** | Default | Default | Requires `--shared-responses` flag |
 | **Peer event translation** | `nstreams_transport.py` | `multicast_transport.py` | `slima2a` runtime (`_translate_peer_response`) |
 
-`native-broadcast` is the closest implementation to the SLIMRPC broadcast-live spec: SLIM handles both fan-out and peer response routing with no application-layer relay. Agents must be started with `--shared-responses` to opt into the shared-responses server mode.
+`native-broadcast` is the native fan-out mode from the SLIMRPC collaborative task spec: SLIM handles both fan-out and peer response routing with no application-layer relay. Agents must be started with `--shared-responses` to opt into the shared-responses server mode.
 
 ## Key spec concepts demonstrated
 
@@ -220,4 +220,4 @@ Both transport modules implement the same interface and produce identical sessio
 | `TASK_STATE_INPUT_REQUIRED` for human-in-the-loop approval | `remediation_agent.py` |
 | Mid-session client messages (async `send_queue`) | `client.py` |
 | Session teardown via request generator exhaustion | `client.py` `send_queue.put(None)` |
-| Agent Card `extensions` field for broadcast-live capability declaration | `agents/base.py:make_agent_card()` |
+| Agent Card `extensions` field for collaborative-task capability declaration | `agents/base.py:make_agent_card()` |

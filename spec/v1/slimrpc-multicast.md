@@ -118,7 +118,7 @@ SLIM identifies the sender of each message received on the group channel, allowi
 
 `SendLiveMessage` is the bidirectional streaming method introduced in A2A 1.1. A client sends a single `SendLiveMessage` to a SLIM group channel and establishes N independent duplex streams — one with each participating agent — over that channel. Each agent's response stream is delivered only to the initiating client; agents are unaware of one another's output.
 
-For a many-to-many mode in which all messages are delivered to all channel members, see the [SLIMRPC Broadcast Live Messaging specification](slimrpc-broadcast-live.md).
+For a many-to-many mode in which each agent's output is relayed to peer agents, see the [SLIMRPC Collaborative Task specification](slimrpc-collaborative-task.md).
 
 **Requirements:**
 

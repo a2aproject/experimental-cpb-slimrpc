@@ -101,7 +101,7 @@ def build_agent_card():
         name="Log Agent",
         description=(
             "Surfaces relevant log entries from service logs in response to an "
-            "incident alert. Log entries are streamed to the broadcast live session "
+            "incident alert. Log entries are streamed to the collaborative task session "
             "for analysis by other participants."
         ),
         slim_name=FULL_SLIM_NAME,
@@ -128,6 +128,6 @@ async def main(shared_responses: bool = False) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--shared-responses", action="store_true", default=False,
-                        help="Enable native broadcast-live mode (SRPCSharedHandler)")
+                        help="Enable native fan-out mode (SRPCSharedHandler)")
     args = parser.parse_args()
     asyncio.run(main(shared_responses=args.shared_responses))
