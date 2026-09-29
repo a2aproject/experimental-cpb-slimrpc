@@ -1,0 +1,4 @@
+version: v2
+deps:
+  # Provides lf/a2a/v1/a2a.proto (imported by slimrpc_collaborative_channel.proto)
+  - buf.build/a2aproject/a2a

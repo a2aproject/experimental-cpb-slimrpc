@@ -63,6 +63,13 @@ https://a2a-protocol.org/bindings/experimental-slimrpc/v1
 | :------ | :------- | :---------- |
 | `v1` | [`spec/v1/slimrpc.md`](spec/v1/slimrpc.md) | Core binding specification — protocol requirements, SLIM addressing, service parameters, method inventory, error mapping, streaming, authentication, and Agent Card declaration |
 | `v1` | [`spec/v1/slimrpc-multicast.md`](spec/v1/slimrpc-multicast.md) | Multicast RPC — sending a single message to multiple agents simultaneously via SLIM group channels, client discovery, and response collection |
+| `v1` | [`spec/v1/slimrpc-broadcast-live.md`](spec/v1/slimrpc-broadcast-live.md) | Broadcast Live Messaging — group-chat model on a SLIM group channel using `SendLiveMessage` with `slimrpc-live-routing: broadcast`; peer outputs are translated into inputs and recorded in each agent's task timeline |
+
+## Examples
+
+| Example | Description |
+| :------ | :---------- |
+| [`examples/collaborative/incident-response`](examples/collaborative/incident-response/README.md) | Four-agent incident response using broadcast live messaging — monitoring, log analysis, diagnostics, and remediation agents working together on a shared SLIM group channel (example pending update to new API) |
 
 ## Reference Implementations
 
