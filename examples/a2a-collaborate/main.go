@@ -16,7 +16,10 @@ import (
 	"github.com/a2aproject/a2a-go/v2/a2a"
 	"github.com/a2aproject/a2a-go/v2/a2aclient"
 	"github.com/a2aproject/a2a-go/v2/a2aclient/agentcard"
-	"google.golang.org/protobuf/types/known/structpb"
+	a2agrpc "github.com/a2aproject/a2a-go/v2/a2agrpc/v1"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+	"encoding/json"
 )
 
 type Relay struct {
@@ -111,12 +114,7 @@ func (r *Relay) readAndRelay(idx int, output chan<- string) {
 		for {
 			select {
 			case req := <-agent.queue:
-				if agent.taskID != "" {
-					req.Message.TaskID = agent.taskID
-				}
-				if agent.contextID != "" {
-					req.Message.ContextID = agent.contextID
-				}
+				// task ID and context ID are already set correctly at enqueue time
 				_, err := agent.client.SendMessage(r.ctx, req)
 				if err != nil {
 					output <- fmt.Sprintf("[System]: relay error to %s: %v", agent.name, err)
@@ -135,26 +133,24 @@ func (r *Relay) readAndRelay(idx int, output chan<- string) {
 		}
 
 		if task, ok := event.(*a2a.Task); ok {
-			agent.taskID = task.ID
-			agent.contextID = task.ContextID
+			r.agents[idx].taskID = task.ID
+			r.agents[idx].contextID = task.ContextID
 			close(agent.taskReady)
 		}
 
-		output <- fmt.Sprintf("[%s]: %v", agent.name, event)
+		if b, err := json.Marshal(event); err == nil {
+			output <- fmt.Sprintf("[%s]: %s", agent.name, b)
+		}
 
 		relayReq := translateEventToRequest(event, agent.name)
 		if relayReq != nil {
-			if agent.taskID != "" {
-				relayReq.Message.TaskID = agent.taskID
-			}
-			if agent.contextID != "" {
-				relayReq.Message.ContextID = agent.contextID
-			}
-
 			for j, other := range r.agents {
 				if j != idx {
+					// Clone per target so each gets its own task/context IDs.
+					targetReq := cloneRequestForAgent(relayReq, &r.agents[j])
+					output <- fmt.Sprintf("[relay] %s → %s (%s)", agent.name, other.name, eventKind(event))
 					select {
-					case other.queue <- relayReq:
+					case other.queue <- targetReq:
 					case <-r.ctx.Done():
 						return
 					}
@@ -164,36 +160,78 @@ func (r *Relay) readAndRelay(idx int, output chan<- string) {
 	}
 }
 
+// cloneRequestForAgent copies a relay request and stamps it with the target
+// agent's task ID and context ID so each target gets an independent struct.
+func cloneRequestForAgent(src *a2a.SendMessageRequest, target *agentClient) *a2a.SendMessageRequest {
+	msgCopy := *src.Message
+	msgCopy.ID = a2a.NewMessageID()
+	msgCopy.TaskID = target.taskID
+	msgCopy.ContextID = target.contextID
+	return &a2a.SendMessageRequest{Message: &msgCopy}
+}
+
+func eventKind(e a2a.Event) string {
+	switch e.(type) {
+	case *a2a.Task:
+		return "task"
+	case *a2a.TaskStatusUpdateEvent:
+		return "status-update"
+	case *a2a.TaskArtifactUpdateEvent:
+		return "artifact-update"
+	default:
+		return "event"
+	}
+}
+
+func toMap(v any) map[string]any {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return nil
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil
+	}
+	return m
+}
+
 func translateEventToRequest(event a2a.Event, sender string) *a2a.SendMessageRequest {
 	msg := &a2a.Message{
-		Role: a2a.MessageRoleUser,
+		ID:       a2a.NewMessageID(),
+		Role:     a2a.MessageRoleUser,
+		Metadata: map[string]any{
+			"https://a2a-protocol.org/extensions/shared-task/v1": map[string]any{
+				"message-sender": sender,
+			},
+		},
 	}
 
 	switch e := event.(type) {
 	case *a2a.Task:
-		val, _ := structpb.NewValue(e)
+		m := toMap(e)
+		if m == nil {
+			return nil
+		}
 		msg.Parts = append(msg.Parts, &a2a.Part{
-			Content: &a2a.Data{Value: val},
+			Content:   a2a.Data{Value: m},
 			MediaType: "application/vnd.a2a.task+json",
 		})
 	case *a2a.TaskStatusUpdateEvent:
-		val, _ := structpb.NewValue(e)
+		m := toMap(e)
+		if m == nil {
+			return nil
+		}
 		msg.Parts = append(msg.Parts, &a2a.Part{
-			Content: &a2a.Data{Value: val},
+			Content:   a2a.Data{Value: m},
 			MediaType: "application/vnd.a2a.task-status-update+json",
 		})
-	// case *a2a.TaskMessageUpdateEvent: // Not added to SDK yet
-	//     val, _ := structpb.NewValue(e)
-	//     msg.Parts = append(msg.Parts, &a2a.Part{
-	//         Content: &a2a.Data{Value: val},
-	//         MediaType: "application/vnd.a2a.task-message-update+json",
-	//     })
 	case *a2a.TaskArtifactUpdateEvent:
-		// If the SDK has a specific field in SendMessageRequest, we use it.
-		// Otherwise, we treat it as a special message.
-		val, _ := structpb.NewValue(e)
+		m := toMap(e)
+		if m == nil {
+			return nil
+		}
 		msg.Parts = append(msg.Parts, &a2a.Part{
-			Content: &a2a.Data{Value: val},
+			Content:   a2a.Data{Value: m},
 			MediaType: "application/vnd.a2a.task-artifact-update+json",
 		})
 	default:
@@ -239,13 +277,15 @@ func main() {
 	var agents []agentClient
 
 	for _, ref := range agentCards {
-		card, err := resolver.Resolve(ctx, ref, nil)
+		card, err := resolver.Resolve(ctx, ref)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to resolve card %s: %v\n", ref, err)
 			os.Exit(1)
 		}
 
-		client, err := a2aclient.NewFromCard(ctx, card, nil)
+		client, err := a2aclient.NewFromCard(ctx, card,
+			a2agrpc.WithGRPCTransport(grpc.WithTransportCredentials(insecure.NewCredentials())),
+		)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "failed to create client for %s: %v\n", card.Name, err)
 			os.Exit(1)
