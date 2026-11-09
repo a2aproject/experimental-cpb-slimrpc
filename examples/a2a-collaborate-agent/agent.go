@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package main
+package collagent
 
 import (
 	"context"
@@ -37,6 +37,7 @@ type CollabAgentExecutor struct {
 	model string
 	fanIn *FanInHandler
 	debug bool
+	role  string
 }
 
 func (a *CollabAgentExecutor) debugf(format string, args ...any) {
@@ -81,13 +82,7 @@ func (a *CollabAgentExecutor) runLLMLoop(
 	inbox <-chan *a2a.Message,
 	yield func(a2a.Event, error) bool,
 ) {
-	systemPrompt := fmt.Sprintf(
-		"You are %s, a participant in a collaborative group channel with other AI agents. "+
-			"You receive messages from other participants — both humans and other agents. "+
-			"Only respond using the `respond` tool if you genuinely have something to add to the conversation. "+
-			"You don't need to respond to every message you see. Keep responses concise and relevant.",
-		a.name,
-	)
+	systemPrompt := RoleSystemPrompt(a.name, a.role)
 
 	respondTool := anthropic.ToolUnionParamOfTool(
 		anthropic.ToolInputSchemaParam{
@@ -105,6 +100,8 @@ func (a *CollabAgentExecutor) runLLMLoop(
 		"Send a message to the collaborative channel. Use this when you have something relevant to contribute.",
 	)
 
+	tools := append(RoleTools(a.role), respondTool)
+
 	tag := fmt.Sprintf("[%s task=%s]", a.name, execCtx.TaskID)
 
 	messages := []anthropic.MessageParam{
@@ -119,7 +116,7 @@ func (a *CollabAgentExecutor) runLLMLoop(
 			MaxTokens: 1024,
 			System:    []anthropic.TextBlockParam{{Text: systemPrompt}},
 			Messages:  messages,
-			Tools:     []anthropic.ToolUnionParam{respondTool},
+			Tools:     tools,
 		})
 		if err != nil {
 			if ctx.Err() != nil {
@@ -147,6 +144,7 @@ func (a *CollabAgentExecutor) runLLMLoop(
 		for _, block := range resp.Content {
 			switch b := block.AsAny().(type) {
 			case anthropic.ToolUseBlock:
+				var resultText string
 				if b.Name == "respond" {
 					var input struct {
 						Message string `json:"message"`
@@ -157,12 +155,16 @@ func (a *CollabAgentExecutor) runLLMLoop(
 							return
 						}
 					}
+					resultText = "ok"
+				} else {
+					resultText = HandleToolCall(a.role, b.Name, b.JSON.Input.Raw())
+					a.debugf("%s tool %s -> %s", tag, b.Name, resultText)
 				}
 				toolResults = append(toolResults, anthropic.ContentBlockParamUnion{
 					OfToolResult: &anthropic.ToolResultBlockParam{
 						ToolUseID: b.ID,
 						Content: []anthropic.ToolResultBlockParamContentUnion{
-							{OfText: &anthropic.TextBlockParam{Text: "ok"}},
+							{OfText: &anthropic.TextBlockParam{Text: resultText}},
 						},
 					},
 				})
