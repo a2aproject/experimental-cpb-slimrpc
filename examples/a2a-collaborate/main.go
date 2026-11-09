@@ -3,11 +3,13 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -19,13 +21,16 @@ import (
 	a2agrpc "github.com/a2aproject/a2a-go/v2/a2agrpc/v1"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"encoding/json"
 )
+
+const sharedTaskExt = "https://a2a-protocol.org/extensions/shared-task/v1"
 
 type Relay struct {
 	agents []agentClient
 	ctx    context.Context
 	cancel context.CancelFunc
+	debug  bool
+	output string // "text" or "jsonl"
 }
 
 type agentClient struct {
@@ -37,12 +42,14 @@ type agentClient struct {
 	taskReady chan struct{}
 }
 
-func NewRelay(ctx context.Context, agents []agentClient) *Relay {
+func NewRelay(ctx context.Context, agents []agentClient, debug bool, output string) *Relay {
 	ctx, cancel := context.WithCancel(ctx)
 	return &Relay{
 		agents: agents,
 		ctx:    ctx,
 		cancel: cancel,
+		debug:  debug,
+		output: output,
 	}
 }
 
@@ -138,8 +145,15 @@ func (r *Relay) readAndRelay(idx int, output chan<- string) {
 			close(agent.taskReady)
 		}
 
-		if b, err := json.Marshal(event); err == nil {
-			output <- fmt.Sprintf("[%s]: %s", agent.name, b)
+		switch r.output {
+		case "jsonl":
+			if line, err := formatJSONL(event, agent.name); err == nil {
+				output <- line
+			}
+		default: // "text"
+			if line := formatText(event, agent.name); line != "" {
+				output <- line
+			}
 		}
 
 		relayReq := translateEventToRequest(event, agent.name)
@@ -148,7 +162,9 @@ func (r *Relay) readAndRelay(idx int, output chan<- string) {
 				if j != idx {
 					// Clone per target so each gets its own task/context IDs.
 					targetReq := cloneRequestForAgent(relayReq, &r.agents[j])
-					output <- fmt.Sprintf("[relay] %s → %s (%s)", agent.name, other.name, eventKind(event))
+					if r.debug {
+						output <- fmt.Sprintf("[relay] %s → %s (%s)", agent.name, other.name, eventKind(event))
+					}
 					select {
 					case other.queue <- targetReq:
 					case <-r.ctx.Done():
@@ -158,6 +174,95 @@ func (r *Relay) readAndRelay(idx int, output chan<- string) {
 			}
 		}
 	}
+}
+
+// formatText renders an A2A event as a human-readable line.
+func formatText(event a2a.Event, sender string) string {
+	switch e := event.(type) {
+	case *a2a.Task:
+		return fmt.Sprintf("[%s (submitted)]", sender)
+	case *a2a.TaskStatusUpdateEvent:
+		state := taskStateDisplay(e.Status.State)
+		text := extractMessageText(e.Status.Message)
+		if text != "" {
+			return fmt.Sprintf("[%s (%s)]: %s", sender, state, text)
+		}
+		return fmt.Sprintf("[%s (%s)]", sender, state)
+	case *a2a.TaskArtifactUpdateEvent:
+		text := extractArtifactText(e.Artifact)
+		if text != "" {
+			return fmt.Sprintf("[%s (artifact)]: %s", sender, text)
+		}
+		return ""
+	default:
+		return ""
+	}
+}
+
+// formatJSONL renders an A2A event as a JSON line with sender stamped into
+// the top-level metadata under the shared-task extension key.
+func formatJSONL(event a2a.Event, sender string) (string, error) {
+	m := toMap(event)
+	if m == nil {
+		return "", fmt.Errorf("marshal failed")
+	}
+	meta, _ := m["metadata"].(map[string]any)
+	if meta == nil {
+		meta = make(map[string]any)
+		m["metadata"] = meta
+	}
+	ext, _ := meta[sharedTaskExt].(map[string]any)
+	if ext == nil {
+		ext = make(map[string]any)
+	}
+	ext["message-sender"] = sender
+	meta[sharedTaskExt] = ext
+	b, err := json.Marshal(m)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// taskStateDisplay converts a TaskState constant to a short lowercase label.
+func taskStateDisplay(state a2a.TaskState) string {
+	// Strip the "TASK_STATE_" prefix and lowercase.
+	s := strings.TrimPrefix(string(state), "TASK_STATE_")
+	return strings.ToLower(s)
+}
+
+// extractMessageText joins the text parts of an A2A message.
+func extractMessageText(msg *a2a.Message) string {
+	if msg == nil {
+		return ""
+	}
+	var parts []string
+	for _, p := range msg.Parts {
+		if p == nil {
+			continue
+		}
+		if t, ok := p.Content.(a2a.Text); ok && string(t) != "" {
+			parts = append(parts, string(t))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// extractArtifactText joins the text parts of an artifact.
+func extractArtifactText(artifact *a2a.Artifact) string {
+	if artifact == nil {
+		return ""
+	}
+	var parts []string
+	for _, p := range artifact.Parts {
+		if p == nil {
+			continue
+		}
+		if t, ok := p.Content.(a2a.Text); ok && string(t) != "" {
+			parts = append(parts, string(t))
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // cloneRequestForAgent copies a relay request and stamps it with the target
@@ -197,10 +302,10 @@ func toMap(v any) map[string]any {
 
 func translateEventToRequest(event a2a.Event, sender string) *a2a.SendMessageRequest {
 	msg := &a2a.Message{
-		ID:       a2a.NewMessageID(),
-		Role:     a2a.MessageRoleUser,
+		ID:   a2a.NewMessageID(),
+		Role: a2a.MessageRoleUser,
 		Metadata: map[string]any{
-			"https://a2a-protocol.org/extensions/shared-task/v1": map[string]any{
+			sharedTaskExt: map[string]any{
 				"message-sender": sender,
 			},
 		},
@@ -257,6 +362,8 @@ func main() {
 		agentCards = append(agentCards, s)
 		return nil
 	})
+	debug := fs.Bool("debug", false, `Print relay hop lines and verbose diagnostics`)
+	output := fs.String("output", "text", `Output format: "text" (default) or "jsonl"`)
 
 	args := os.Args[1:]
 	if len(args) > 0 && args[0] == "collaborate" {
@@ -264,6 +371,11 @@ func main() {
 	}
 	fs.Parse(args)
 	initialMsg := fs.Arg(0)
+
+	if *output != "text" && *output != "jsonl" {
+		fmt.Fprintf(os.Stderr, "error: --output must be \"text\" or \"jsonl\"\n")
+		os.Exit(1)
+	}
 
 	if len(agentCards) == 0 {
 		fmt.Fprintln(os.Stderr, "error: at least one --agent-card is required")
@@ -299,7 +411,7 @@ func main() {
 		})
 	}
 
-	relay := NewRelay(ctx, agents)
+	relay := NewRelay(ctx, agents, *debug, *output)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
