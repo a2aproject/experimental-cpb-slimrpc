@@ -91,7 +91,10 @@ func buildAgentCard(name string, httpPort, grpcPort int) *a2a.AgentCard {
 		Capabilities: a2a.AgentCapabilities{
 			Streaming: true,
 			Extensions: []a2a.AgentExtension{
-				{URI: "https://a2a-protocol.org/extensions/collaborative-task/v1"},
+				{
+					URI:    "https://a2a-protocol.org/extensions/collaborative-task/v1",
+					Params: map[string]any{"late-join": true},
+				},
 				{URI: "https://a2a-protocol.org/extensions/shared-task/v1"},
 			},
 		},

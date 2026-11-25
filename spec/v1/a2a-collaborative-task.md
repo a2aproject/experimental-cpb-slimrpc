@@ -125,6 +125,63 @@ The agent **SHOULD** preserve the sender attribution metadata on `TimelineEntry(
 
 **Effect on `generation`:** each appended `TimelineEntry` advances the task's `generation` by 1, enabling downstream subscribers to detect peer-message arrivals as generation gaps and reconcile via `GetTask` (standard ADR-002 behaviour).
 
+### 4.4. Joining an Active Session
+
+An agent can be added to a session after the session is established. The new agent did not receive the earlier items of the session, so the relay gives them to it before any live item.
+
+This section defines joining for the basic relay model ([Section 2.1](#21-basic-relay-model)). It does not define it for the other two models. Each binding states whether it supports joining. A binding that does not support it keeps its own rule (for example, [Section 10.2 of the SLIMRPC profile](slimrpc-collaborative-task.md#102-membership-changes)).
+
+In this section, an earlier item is an item that the relay delivered to the agents before the join: a client message or a translated peer item. The initial `Task` items are not counted as earlier items.
+
+**Who can add an agent.** The client that initiated the session asks the relay to add an agent. The relay **MUST** reject a join request from any other participant. The request names the agent and a history rule. How the client sends the request is defined by the binding. The history rule is one of:
+
+| Rule | Earlier items that the relay sends |
+| :--- | :--- |
+| `all` (default) | Every earlier item |
+| `none` | No earlier item |
+| `last` N | The N newest earlier items |
+
+The earlier items were sent when the new agent was not in the session. The client decides how many of them the new agent can see. The relay **MUST NOT** send more than the rule permits.
+
+**Declaration.** An agent that can join an active session **MUST** declare `"late-join": true` in the `params` of this extension in its Agent Card. The relay **MUST NOT** add an agent that does not declare it, because that agent can read the earlier items as new requests.
+
+**The join message.** The first message that the relay sends to the new agent is the join message. It creates the `Task` of the new agent as described in [Section 4.1](#41-session-initiation). In the basic relay model it is the message of the `SendStreamingMessage` call that opens the stream to the new agent. Its `message-sender` is the client that asked for the join. It has one `Part.data` with `Part.media_type` set to `application/vnd.a2a.collaborative-history+json`:
+
+```json
+{
+  "messages": [
+    {
+      "message_id": "m-1",
+      "role": "ROLE_USER",
+      "parts": [{ "text": "The limit is 200 dollars for each night." }],
+      "metadata": {
+        "https://a2a-protocol.org/extensions/shared-task/v1": { "message-sender": "client" }
+      }
+    }
+  ],
+  "omitted": 0,
+  "summary": "<optional text>"
+}
+```
+
+- **`messages`** has the earlier items that the rule permits, and the initial `Task` items, in the order in which the relay delivered them. Each item is a `Message` in the form that [Section 5.1](#51-translation-rules) gives for delivery to an agent: a client message without structural modification, a peer item translated, an artifact update in the fallback message form. Each item keeps its `message-sender`. The relay **MUST NOT** set `context_id` or `task_id` on these items.
+- **`omitted`** is the number of earlier items that are not in `messages`. It **MUST** be present. It is `0` when the relay sends all of them.
+- **`summary`** is optional. A relay **MAY** write a text that stands for the omitted items and put it here. The relay is the author of this text. The relay **MUST NOT** put a summary in `messages` as if a participant sent it.
+
+The relay **MUST** include the initial `Task` item of each agent in `messages` for each history rule, so that the new agent learns the task ID and `contextId` of each peer. The relay **MUST** remove `history`, `artifacts` and `timeline` from the Task JSON of these items, because they can contain items that the rule omits.
+
+**Order.** The relay **MUST** deliver the join message before any other item to the new agent. Each item of the session **MUST** reach the new agent exactly one time: in `messages`, in the `omitted` count, or as a live item after the join message. The initial `Task` items are the exception: they are in `messages` and are not counted.
+
+**Behaviour of the new agent.** The new agent:
+
+- **MUST** append each item in `messages` to the `timeline` of its task as a `TimelineEntry(Message)`, in the order given and before the entry of any live item (see [Section 4.3](#43-timeline-integration))
+- **MUST NOT** respond to an item in `messages` and **MUST NOT** do the work that it asks for; the agents that were in the session at that time received it as a live item
+- **MAY** use the items in `messages` and the `summary` as context when it acts on live items
+
+When `omitted` is more than `0`, the record of the new agent is not complete, and the new agent knows this from the count.
+
+**Other agents.** The new agent returns its initial `Task` as its first response, and the relay delivers it to all other agents as described in [Section 4.1](#41-session-initiation). This is how the other agents learn that an agent joined. The relay **MUST** remove `history`, `artifacts` and `timeline` from the Task JSON before this delivery, because the `Task` of the new agent can contain the join message. After that, [Section 4.2](#42-session-behaviour) applies to the new agent as to each other participant.
+
 ## 5. Stream Translation
 
 The relay (or transport, in the native fan-out model) translates peer `StreamResponse` items into `StreamRequest` items before delivery to receiving agents. Application code sees a unified inbound stream of `StreamRequest` items; it does not interact with the relay routing directly.
@@ -231,6 +288,29 @@ Client          Relay           Agent A         Agent B
 
 Agent A and Agent B each append the other's message as `TimelineEntry(Message)` in their own task timeline.
 
+### 6.3. Joining an Active Session
+
+Agent C joins after the client and Agents A and B exchanged messages m1 to m4. The history rule is `all`.
+
+```
+Client          Relay           Agent A         Agent B         Agent C
+  |               |               |               |               |
+  |-join C, all-->|               |               |               |  (request defined by the binding)
+  |               |-SendStream [history: m1..m4, omitted=0]------>|  (join message)
+  |               |               |               |               |
+  |               |<--[Task C]------------------------------------|  (Agent C: initial Task)
+  |<--[Task C]----|               |               |               |
+  |               |--[Task C]---->|               |               |  (src=AgentC)
+  |               |--[Task C, src=AgentC]-------->|               |
+  |               |               |               |               |
+  |-m5----------->|               |               |               |  (first live message after the join)
+  |               |--[m5]-------->|               |               |  (src=Client)
+  |               |--[m5, src=Client]------------>|               |
+  |               |--[m5, src=Client]---------------------------->|
+```
+
+Agent C appends m1 to m4 to its timeline and does not respond to them. Agent C can respond to m5, and it can use m1 to m4 as context.
+
 ## 7. Error Handling
 
 The following are per-agent failures and **MUST NOT** terminate the session or affect other agents:
@@ -239,5 +319,6 @@ The following are per-agent failures and **MUST NOT** terminate the session or a
 - An agent's task transitions to a failed terminal state
 - An agent does not respond to a received message (selective participation is valid)
 - An agent is removed from the session while active
+- An agent that is asked to join cannot be reached or does not create its `Task` (see [Section 4.4](#44-joining-an-active-session))
 
 Session-level failure conditions (e.g. the relay cannot be established, an agent cannot be reached at session initiation) and their status codes are defined by the binding.
